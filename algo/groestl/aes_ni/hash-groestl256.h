@@ -35,7 +35,7 @@ typedef crypto_uint64 u64;
 
 #include "brg_endian.h"
 #define NEED_UINT_64T
-#include "brg_types.h"
+#include "algo/sha/brg_types.h"
 
 #ifdef IACA_TRACE
   #include IACA_MARKS
@@ -63,7 +63,8 @@ typedef crypto_uint64 u64;
 //#define ROUNDS (ROUNDS1024)
 //#endif
 
-#define ROTL64(a,n) ((((a)<<(n))|((a)>>(64-(n))))&li_64(ffffffffffffffff))
+//#define ROTL64(a,n) ((((a)<<(n))|((a)>>(64-(n))))&li_64(ffffffffffffffff))
+#define ROTL64(a,n) rol64( a, n )
 
 #if (PLATFORM_BYTE_ORDER == IS_BIG_ENDIAN)
 #define EXT_BYTE(var,n) ((u8)((u64)(var) >> (8*(7-(n)))))
@@ -93,9 +94,6 @@ typedef enum
 typedef struct {
   __attribute__ ((aligned (32))) __m128i chaining[SIZE256];
   __attribute__ ((aligned (32))) __m128i buffer[SIZE256];
-//  __attribute__ ((aligned (32))) u64 chaining[SIZE/8];      /* actual state */
-//  __attribute__ ((aligned (32))) BitSequence_gr buffer[SIZE];  /* data buffer */
-//  u64 block_counter;        /* message block counter */
   int hashlen;              // bytes
   int blk_count;
   int buf_ptr;              /* data buffer pointer */
@@ -117,5 +115,8 @@ HashReturn_gr hash_groestli256( int, const BitSequence_gr*, DataLength_gr,
 
 HashReturn_gr update_and_final_groestl256( hashState_groestl256*, void*,
                                            const void*, DataLength_gr );
+
+int groestl256_full( hashState_groestl256* ctx,
+                   void* output, const void* input, DataLength_gr databitlen );
 
 #endif /* __hash_h */

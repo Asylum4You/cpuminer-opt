@@ -1,4 +1,3 @@
-#include "miner.h"
 #include "algo-gate-api.h"
 #include "sph_blake.h"
 
@@ -40,8 +39,8 @@ void blakehash(void *state, const void *input)
 
 }
 
-int scanhash_blake( int thr_id, struct work *work, uint32_t max_nonce,
-                      uint64_t *hashes_done )
+int scanhash_blake( struct work *work, uint32_t max_nonce,
+                      uint64_t *hashes_done, struct thr_info *mythr )
 {
         uint32_t *pdata = work->data;
         uint32_t *ptarget = work->target;
@@ -50,6 +49,7 @@ int scanhash_blake( int thr_id, struct work *work, uint32_t max_nonce,
 	uint32_t _ALIGN(32) hash64[8];
 	uint32_t _ALIGN(32) endiandata[20];
 	uint32_t n = first_nonce;
+   int thr_id = mythr->id;  // thr_id arg is deprecated
 
 	ctx_midstate_done = false;
 
@@ -89,20 +89,4 @@ int scanhash_blake( int thr_id, struct work *work, uint32_t max_nonce,
 	pdata[19] = n;
 	return 0;
 }
-
-// changed to get_max64_0x3fffffLL in cpuminer-multi-decred
-int64_t blake_get_max64 ()
-{
-  return 0x7ffffLL;
-}
-
-bool register_blake_algo( algo_gate_t* gate )
-{
-  gate->scanhash  = (void*)&scanhash_blake;
-  gate->hash      = (void*)&blakehash;
-  gate->hash_alt  = (void*)&blakehash;
-  gate->get_max64 = (void*)&blake_get_max64;
-  return true;
-}
-
 

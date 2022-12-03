@@ -1,15 +1,13 @@
 #include <memory.h>
 
-#include "miner.h"
 #include "algo/blake/sph_blake.h"
 #include "algo/groestl/sph_groestl.h"
 #include "algo/skein/sph_skein.h"
 #include "algo/keccak/sph_keccak.h"
 #include "lyra2.h"
 #include "algo-gate-api.h"
-#include "avxdefs.h"
-
-#ifndef NO_AES_NI
+#include "simd-utils.h"
+#if defined(__AES__)
   #include "algo/groestl/aes_ni/hash-groestl256.h"
 #endif
 
@@ -19,10 +17,10 @@ typedef struct {
         sph_blake256_context     blake;
         sph_keccak256_context    keccak;
         sph_skein256_context     skein;
-#ifdef NO_AES_NI
-        sph_groestl256_context   groestl;
-#else
+#if defined(__AES__)
         hashState_groestl256     groestl;
+#else
+        sph_groestl256_context   groestl;
 #endif
 } lyra2re_ctx_holder;
 
@@ -34,10 +32,10 @@ void init_lyra2re_ctx()
         sph_blake256_init(&lyra2re_ctx.blake);
         sph_keccak256_init(&lyra2re_ctx.keccak);
         sph_skein256_init(&lyra2re_ctx.skein);
-#ifdef NO_AES_NI
-        sph_groestl256_init(&lyra2re_ctx.groestl);
-#else
+#if defined(__AES__)
         init_groestl256( &lyra2re_ctx.groestl, 32 );
+#else
+        sph_groestl256_init(&lyra2re_ctx.groestl);
 #endif
 }
 
@@ -73,18 +71,18 @@ void lyra2re_hash(void *state, const void *input)
 	sph_skein256(&ctx.skein, hashA, 32);
 	sph_skein256_close(&ctx.skein, hashB);
 
-#ifdef NO_AES_NI
+#if defined(__AES__)
+        update_and_final_groestl256( &ctx.groestl, hashA, hashB, 256 );
+#else
 	sph_groestl256( &ctx.groestl, hashB, 32 );
 	sph_groestl256_close( &ctx.groestl, hashA );
-#else
-        update_and_final_groestl256( &ctx.groestl, hashA, hashB, 256 );
 #endif
 
 	memcpy(state, hashA, 32);
 }
 
-int scanhash_lyra2re(int thr_id, struct work *work,
-	uint32_t max_nonce,	uint64_t *hashes_done)
+int scanhash_lyra2re( struct work *work, uint32_t max_nonce,
+	              uint64_t *hashes_done, struct thr_info *mythr )
 {
         uint32_t *pdata = work->data;
         uint32_t *ptarget = work->target;
@@ -93,6 +91,7 @@ int scanhash_lyra2re(int thr_id, struct work *work,
 	const uint32_t first_nonce = pdata[19];
 	uint32_t nonce = first_nonce;
         const uint32_t Htarg = ptarget[7];
+   int thr_id = mythr->id;  // thr_id arg is deprecated
 
         swab32_array( endiandata, pdata, 20 );
 
@@ -101,67 +100,26 @@ int scanhash_lyra2re(int thr_id, struct work *work,
 	do {
 		be32enc(&endiandata[19], nonce);
 		lyra2re_hash(hash, endiandata);
-		if (hash[7] <= Htarg )
-                {
-                   if ( fulltest(hash, ptarget) )
-                   {
+		if ( hash[7] <= Htarg )
+      if ( fulltest(hash, ptarget) && !opt_benchmark )
+      {
 			pdata[19] = nonce;
-			*hashes_done = pdata[19] - first_nonce;
-			return 1;
-                   }
-		}
+         submit_solution( work, hash, mythr );
+      }
 		nonce++;
-
 	} while (nonce < max_nonce && !work_restart[thr_id].restart);
-
 	pdata[19] = nonce;
 	*hashes_done = pdata[19] - first_nonce + 1;
 	return 0;
 }
 
-int64_t lyra2re_get_max64 ()
-{
-  return 0xffffLL;
-}
-
-void lyra2re_set_target ( struct work* work, double job_diff )
-{
-   work_set_target(work, job_diff / (128.0 * opt_diff_factor) );
-}
-
-/*
-bool lyra2re_thread_init()
-{
-   const int64_t ROW_LEN_INT64 = BLOCK_LEN_INT64 * 8; // nCols
-   const int64_t ROW_LEN_BYTES = ROW_LEN_INT64 * 8;
-
-   int i = (int64_t)ROW_LEN_BYTES * 8; // nRows;
-   lyra2re_wholeMatrix = _mm_malloc( i, 64 );
-
-   if ( lyra2re_wholeMatrix == NULL )
-     return false;
-
-#if defined (__AVX2__)
-   memset_zero_m256i( (__m256i*)lyra2re_wholeMatrix, i/32 );
-#elif defined(__AVX__)
-   memset_zero_m128i( (__m128i*)lyra2re_wholeMatrix, i/16 );
-#else
-   memset( lyra2re_wholeMatrix, 0, i );
-#endif
-   return true;
-}
-*/
-
 bool register_lyra2re_algo( algo_gate_t* gate )
 {
   init_lyra2re_ctx();
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX_OPT | AVX2_OPT;
-//  gate->miner_thread_init = (void*)&lyra2re_thread_init;
+  gate->optimizations = SSE2_OPT | AES_OPT | SSE42_OPT | AVX2_OPT;
   gate->scanhash   = (void*)&scanhash_lyra2re;
   gate->hash       = (void*)&lyra2re_hash;
-  gate->hash_alt   = (void*)&lyra2re_hash;
-  gate->get_max64  = (void*)&lyra2re_get_max64;
-  gate->set_target = (void*)&lyra2re_set_target;
+  opt_target_factor = 128.0;
   return true;
 };
 

@@ -36,6 +36,8 @@
 
 #include "sph_echo.h"
 
+#if !defined(__AES__)
+
 #ifdef __cplusplus
 extern "C"{
 #endif
@@ -71,7 +73,7 @@ extern "C"{
 #endif
 
 #define AES_BIG_ENDIAN   0
-#include "algo/sha3/aes_helper.c"
+#include "algo/sha/aes_helper.c"
 
 #if SPH_ECHO_64
 
@@ -1028,4 +1030,5 @@ sph_echo512_addbits_and_close(void *cc, unsigned ub, unsigned n, void *dst)
 }
 #ifdef __cplusplus
 }
-#endif
+#endif 
+#endif  // !AES

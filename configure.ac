@@ -1,4 +1,4 @@
-AC_INIT([cpuminer-opt], [3.5.12])
+AC_INIT([cpuminer-opt], [3.20.3])
 
 AC_PREREQ([2.59c])
 AC_CANONICAL_SYSTEM
@@ -93,6 +93,14 @@ then
     AC_COMPILE_IFELSE([AC_LANG_PROGRAM(,[asm ("vpaddd %ymm0, %ymm1, %ymm2");])],
       AC_DEFINE(USE_AVX2, 1, [Define to 1 if AVX2 assembly is available.])
       AC_MSG_RESULT(yes)
+      AC_MSG_CHECKING(whether we can compile AVX512 code)
+      AC_COMPILE_IFELSE([AC_LANG_PROGRAM(,[asm ("vpaddd %zmm0, %zmm1, %zmm2{%k1}");])],
+        AC_DEFINE(USE_AVX512, 1, [Define to 1 if AVX512 assembly is available.])
+        AC_MSG_RESULT(yes)
+      ,
+        AC_MSG_RESULT(no)
+        AC_MSG_WARN([The assembler does not support the AVX512 instruction set.])
+      )
     ,
       AC_MSG_RESULT(no)
       AC_MSG_WARN([The assembler does not support the AVX2 instruction set.])
@@ -106,7 +114,7 @@ fi
 AC_CHECK_LIB(jansson, json_loads, request_jansson=false, request_jansson=true)
 
 # GC2 for GNU static
-if test "x$OS" = "xWindows_NT" ; then
+if test "x$have_win32" = "xtrue" ; then
    # MinGW
    AC_CHECK_LIB([pthread], [pthread_create], PTHREAD_LIBS="-lpthreadGC2",[])
 else

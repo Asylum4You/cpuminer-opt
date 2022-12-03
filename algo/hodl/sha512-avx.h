@@ -22,16 +22,22 @@ typedef struct
 #ifdef __AVX2__
    __m256i h[8];
    __m256i w[80];
-#else // AVX
+#elif defined(__SSE4_2__)
+//#elif defined(__AVX__)
    __m128i h[8];
    __m128i w[80];
+#else
+   int dummy;
 #endif
 } Sha512Context;
 
 #ifdef __AVX2__
 #define SHA512_PARALLEL_N 8
-#else // AVX
+#elif defined(__SSE4_2__)
+//#elif defined(__AVX__)
 #define SHA512_PARALLEL_N 4
+#else
+#define SHA512_PARALLEL_N 1   // dummy value
 #endif
 
 //SHA-512 related functions
@@ -39,6 +45,6 @@ void sha512Compute32b_parallel(
         uint64_t *data[SHA512_PARALLEL_N],
         uint64_t *digest[SHA512_PARALLEL_N]);
 
-void sha512ProcessBlock(Sha512Context *context);
+void sha512ProcessBlock(Sha512Context contexti[2] );
 
 #endif

@@ -1,53 +1,39 @@
-#include "miner.h"
 #include "algo-gate-api.h"
+
+#if !defined(SKEIN_8WAY) && !defined(SKEIN_4WAY)
 
 #include <string.h>
 #include <stdint.h>
-
-#include <openssl/sha.h>
-
 #include "sph_skein.h"
-
-typedef struct {
-        sph_skein512_context skein;
-        SHA256_CTX           sha256;
-} skein_ctx_holder;
-
-skein_ctx_holder skein_ctx;
-
-void init_skein_ctx()
-{
-        sph_skein512_init(&skein_ctx.skein);
-        SHA256_Init(&skein_ctx.sha256);
-}
+#include "algo/sha/sha256-hash.h"
 
 void skeinhash(void *state, const void *input)
 {
-     skein_ctx_holder ctx __attribute__ ((aligned (64)));
-     memcpy( &ctx, &skein_ctx, sizeof(skein_ctx) );
      uint32_t hash[16] __attribute__ ((aligned (64)));
-	
-     sph_skein512(&ctx.skein, input, 80);
-     sph_skein512_close(&ctx.skein, hash);
+     sph_skein512_context ctx_skein;
 
-     SHA256_Update(&ctx.sha256, hash, 64);
-     SHA256_Final((unsigned char*) hash, &ctx.sha256);
+     sph_skein512_init( &ctx_skein );
+     sph_skein512( &ctx_skein, input, 80 );
+     sph_skein512_close( &ctx_skein, hash );
+
+     sha256_full( hash, hash, 64 );
 
      memcpy(state, hash, 32);
 }
 
-int scanhash_skein(int thr_id, struct work *work,
-	uint32_t max_nonce, uint64_t *hashes_done)
+int scanhash_skein( struct work *work, uint32_t max_nonce,
+                    uint64_t *hashes_done, struct thr_info *mythr )
 {
-        uint32_t *pdata = work->data;
-        uint32_t *ptarget = work->target;
+   uint32_t *pdata = work->data;
+   uint32_t *ptarget = work->target;
 	uint32_t hash64[8] __attribute__ ((aligned (64)));
 	uint32_t endiandata[20] __attribute__ ((aligned (64)));
 	const uint32_t Htarg = ptarget[7];
 	const uint32_t first_nonce = pdata[19];
 	uint32_t n = first_nonce;
-	
-        swab32_array( endiandata, pdata, 20 );
+   int thr_id = mythr->id;  // thr_id arg is deprecated
+
+   swab32_array( endiandata, pdata, 20 );
 
 	do {
 		be32enc(&endiandata[19], n); 
@@ -66,15 +52,4 @@ int scanhash_skein(int thr_id, struct work *work,
 
 	return 0;
 }
-
-int64_t skein_get_max64() { return 0x7ffffLL; }
-
-bool register_skein_algo( algo_gate_t* gate )
-{
-    init_skein_ctx();
-    gate->scanhash  = (void*)&scanhash_skein;
-    gate->hash      = (void*)&skeinhash;
-    gate->get_max64 = (void*)&skein_get_max64;
-    return true;
-};
-
+#endif

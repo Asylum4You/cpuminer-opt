@@ -2,7 +2,7 @@
 #define SPH_FUGUE_H__
 
 #include <stddef.h>
-#include "algo/sha3/sph_types.h"
+#include "algo/sha/sph_types.h"
 
 #ifdef __cplusplus
 extern "C"{
@@ -73,6 +73,14 @@ void sph_fugue512_close(void *cc, void *dst);
 
 void sph_fugue512_addbits_and_close(
 	void *cc, unsigned ub, unsigned n, void *dst);
+
+#define sph_fugue512_full( cc, dst, data, len ) \
+do{ \
+   sph_fugue512_init( cc ); \
+   sph_fugue512( cc, data, len ); \
+   sph_fugue512_close( cc, dst ); \
+}while(0)
+
 
 #ifdef __cplusplus
 }

@@ -21,7 +21,7 @@
 
 #include "brg_endian.h"
 #define NEED_UINT_64T
-#include "brg_types.h"
+#include "algo/sha/brg_types.h"
 
 /* some sizes (number of bytes) */
 #define ROWS (8)
@@ -43,7 +43,8 @@
 #define ROUNDS (ROUNDS1024)
 //#endif
 
-#define ROTL64(a,n) ((((a)<<(n))|((a)>>(64-(n))))&li_64(ffffffffffffffff))
+//#define ROTL64(a,n) ((((a)<<(n))|((a)>>(64-(n))))&li_64(ffffffffffffffff))
+#define ROTL64(a,n) rol64( a, n )
 
 #if (PLATFORM_BYTE_ORDER == IS_BIG_ENDIAN)
 #define EXT_BYTE(var,n) ((u8)((u64)(var) >> (8*(7-(n)))))
@@ -87,5 +88,6 @@ HashReturn_gr final_groestl( hashState_groestl*, void* );
 
 HashReturn_gr update_and_final_groestl( hashState_groestl*,  void*,
                                         const void*, DataLength_gr );
+int groestl512_full( hashState_groestl*,  void*, const void*, uint64_t );
 
 #endif /* __hash_h */

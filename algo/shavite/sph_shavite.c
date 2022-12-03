@@ -35,6 +35,8 @@
 
 #include "sph_shavite.h"
 
+#if !(defined(__AES__) && defined(__SSSE3__))
+
 #ifdef __cplusplus
 extern "C"{
 #endif
@@ -62,7 +64,7 @@ extern "C"{
  */
 
 #define AES_BIG_ENDIAN   0
-#include "algo/sha3/aes_helper.c"
+#include "algo/sha/aes_helper.c"
 
 static const sph_u32 IV224[] = {
 	C32(0x6774F31C), C32(0x990AE210), C32(0xC87D4274), C32(0xC9546371),
@@ -1731,21 +1733,21 @@ sph_shavite384_addbits_and_close(void *cc, unsigned ub, unsigned n, void *dst)
 
 /* see sph_shavite.h */
 void
-sph_shavite512_init(void *cc)
+sph_shavite512_sw_init(void *cc)
 {
 	shavite_big_init(cc, IV512);
 }
 
 /* see sph_shavite.h */
 void
-sph_shavite512(void *cc, const void *data, size_t len)
+sph_shavite512_sw(void *cc, const void *data, size_t len)
 {
 	shavite_big_core(cc, data, len);
 }
 
 /* see sph_shavite.h */
 void
-sph_shavite512_close(void *cc, void *dst)
+sph_shavite512_sw_close(void *cc, void *dst)
 {
 	shavite_big_close(cc, 0, 0, dst, 16);
 //	shavite_big_init(cc, IV512);
@@ -1753,7 +1755,7 @@ sph_shavite512_close(void *cc, void *dst)
 
 /* see sph_shavite.h */
 void
-sph_shavite512_addbits_and_close(void *cc, unsigned ub, unsigned n, void *dst)
+sph_shavite512_sw_addbits_and_close(void *cc, unsigned ub, unsigned n, void *dst)
 {
 	shavite_big_close(cc, ub, n, dst, 16);
 //	shavite_big_init(cc, IV512);
@@ -1762,3 +1764,6 @@ sph_shavite512_addbits_and_close(void *cc, unsigned ub, unsigned n, void *dst)
 #ifdef __cplusplus
 }
 #endif
+
+#endif   // !AES
+
