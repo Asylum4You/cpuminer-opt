@@ -15,6 +15,8 @@
 //
 // "_mm256_shuffle_epi8" and "_mm256_alignr_epi8" are restricted to 128 bit
 // lanes and data can't cross the 128 bit lane boundary.  
+// Full width byte shuffle is available with AVX512VL using the mask version
+// with a full mask (-1). 
 // Instructions that can move data across 128 bit lane boundary incur a
 // performance penalty over those that can't.
 // Some usage of index vectors may be encoded as if full vector shuffles are
@@ -64,10 +66,6 @@ typedef union
 // Move low element of vector to integer.
 #define u64_mov256_64( v ) u64_mov128_64( _mm256_castsi256_si128( v ) )
 #define u32_mov256_32( v ) u32_mov128_32( _mm256_castsi256_si128( v ) )
-
-// deprecated
-//#define mm256_mov256_64 u64_mov256_64 
-//#define mm256_mov256_32 u32_mov256_32
 
 // concatenate two 128 bit vectors into one 256 bit vector: { hi, lo }
 #define mm256_concat_128( hi, lo ) \
@@ -151,10 +149,12 @@ static inline __m256i mm256_not( const __m256i v )
 
 #endif
 
+/*
 // Unary negation of each element ( -v )
 #define mm256_negate_64( v ) _mm256_sub_epi64( m256_zero, v )
 #define mm256_negate_32( v ) _mm256_sub_epi32( m256_zero, v )
 #define mm256_negate_16( v ) _mm256_sub_epi16( m256_zero, v )
+*/
 
 
 // Add 4 values, fewer dependencies than sequential addition.
@@ -176,44 +176,34 @@ static inline __m256i mm256_not( const __m256i v )
 // AVX512 has ternary logic that supports any 3 input boolean expression.
 
 // a ^ b ^ c
-#define mm256_xor3( a, b, c ) \
-   _mm256_ternarylogic_epi64( a, b, c, 0x96 )
+#define mm256_xor3( a, b, c )      _mm256_ternarylogic_epi64( a, b, c, 0x96 )
 
 // legacy convenience only
-#define mm256_xor4( a, b, c, d ) \
-   _mm256_xor_si256( a, mm256_xor3( b, c, d ) )
+#define mm256_xor4( a, b, c, d )   _mm256_xor_si256( a, mm256_xor3( b, c, d ) )
 
 // a & b & c
-#define mm256_and3( a, b, c ) \
-   _mm256_ternarylogic_epi64( a, b, c, 0x80 )
+#define mm256_and3( a, b, c )      _mm256_ternarylogic_epi64( a, b, c, 0x80 )
 
 // a | b | c
-#define mm256_or3( a, b, c ) \
-   _mm256_ternarylogic_epi64( a, b, c, 0xfe )
+#define mm256_or3( a, b, c )       _mm256_ternarylogic_epi64( a, b, c, 0xfe )
 
 // a ^ ( b & c )
-#define mm256_xorand( a, b, c ) \
-   _mm256_ternarylogic_epi64( a, b, c, 0x78 )
+#define mm256_xorand( a, b, c )    _mm256_ternarylogic_epi64( a, b, c, 0x78 )
 
 // a & ( b ^ c )
-#define mm256_andxor( a, b, c ) \
-   _mm256_ternarylogic_epi64( a, b, c, 0x60 )
+#define mm256_andxor( a, b, c )    _mm256_ternarylogic_epi64( a, b, c, 0x60 )
 
 // a ^ ( b | c )
-#define mm256_xoror( a, b, c ) \
-   _mm256_ternarylogic_epi64( a, b, c, 0x1e )
+#define mm256_xoror( a, b, c )     _mm256_ternarylogic_epi64( a, b, c, 0x1e )
 
 // a ^ ( ~b & c )   
-#define mm256_xorandnot( a, b, c ) \
-  _mm256_ternarylogic_epi64( a, b, c, 0xd2 )
+#define mm256_xorandnot( a, b, c ) _mm256_ternarylogic_epi64( a, b, c, 0xd2 )
 
 // a | ( b & c )
-#define mm256_orand( a, b, c ) \
-   _mm256_ternarylogic_epi64( a, b, c, 0xf8  )
+#define mm256_orand( a, b, c )     _mm256_ternarylogic_epi64( a, b, c, 0xf8 )
 
 // ~( a ^ b ), same as (~a) ^ b
-#define mm256_xnor( a, b ) \
-   _mm256_ternarylogic_epi64( a, b, b, 0x81  )
+#define mm256_xnor( a, b )         _mm256_ternarylogic_epi64( a, b, b, 0x81 )
     
 #else
 
@@ -259,76 +249,6 @@ static inline __m256i mm256_not( const __m256i v )
 
 #define mm256_movmask_32( v ) \
    _mm256_castps_si256( _mm256_movmask_ps( _mm256_castsi256_ps( v ) ) )
-
-
-// Diagonal blending
-
-// Blend 4 64 bit elements from 4 vectors
-#define mm256_diagonal_64( v3, v2, v1, v0 ) \
-  mm256_blend_epi32( _mm256_blend_epi32( v3, v2, 0x30 ), \
-                     _mm256_blend_epi32( v1, v0, 0x03 ), 0x0f )
-
-// Blend 8 32 bit elements from 8 vectors
-#define mm256_diagonal_32( v7, v6, v5, v4, v3, v2, v1, v0 ) \
-  _mm256_blend_epi32( \
-        _mm256_blend_epi32( \
-               _mm256_blend_epi32( v7, v6, 0x40 ), \
-               _mm256_blend_epi32( v5, v4, 0x10 ) 0x30 ), \
-        _mm256_blend_epi32( \
-               _mm256_blend_epi32( v3, v2, 0x04) \
-               _mm256_blend_epi32( v1, v0, 0x01 ), 0x03 ), 0x0f )  
-
-
-// Blend 4 32 bit elements from each 128 bit lane.
-#define mm256_diagonal128_32( v3, v2, v1, v0 ) \
-    _mm256_blend_epi32( \
-           _mm256_blend_epi32( v3, v2, 0x44) \
-           _mm256_blend_epi32( v1, v0, 0x11 ) )  
-
-/*
-//
-// Extended bit shift for concatenated packed elements from 2 vectors.
-// Shift right returns low half, shift left return high half.
-
-#if defined(__AVX512VBMI2__) && defined(__AVX512VL__)
-
-#define mm256_shl2_64( v1, v2, c )    _mm256_shldi_epi64( v1, v2, c )
-#define mm256_shr2_64( v1, v2, c )    _mm256_shrdi_epi64( v1, v2, c )
-
-#define mm256_shl2_32( v1, v2, c )    _mm256_shldi_epi32( v1, v2, c )
-#define mm256_shr2_32( v1, v2, c )    _mm256_shrdi_epi32( v1, v2, c )
-
-#define mm256_shl2_16( v1, v2, c )    _mm256_shldi_epi16( v1, v2, c )
-#define mm256_shr2_16( v1, v2, c )    _mm256_shrdi_epi16( v1, v2, c )
-
-#else
-
-#define mm256_shl2i_64( v1, v2, c ) \
-                     _mm256_or_si256( _mm256_slli_epi64( v1, c ), \
-                                      _mm256_srli_epi64( v2, 64 - (c) ) )
-
-#define mm512_shr2_64( v1, v2, c ) \
-                    _mm256_or_si256( _mm256_srli_epi64( v2, c ), \
-                                     _mm256_slli_epi64( v1, 64 - (c) ) )
-
-#define mm256_shl2_32( v1, v2, c ) \
-                    _mm256_or_si256( _mm256_slli_epi32( v1, c ), \
-                                     _mm256_srli_epi32( v2, 32 - (c) ) )
-
-#define mm256_shr2_32( v1, v2, c ) \
-                    _mm256_or_si256( _mm256_srli_epi32( v2, c ), \
-                                     _mm256_slli_epi32( v1, 32 - (c) ) )
-
-#define mm256_shl2_16( v1, v2, c ) \
-                    _mm256_or_si256( _mm256_slli_epi16( v1, c ), \
-                                     _mm256_srli_epi16( v2, 16 - (c) ) )
-
-#define mm256_shr2_16( v1, v2, c ) \
-                    _mm256_or_si256( _mm256_srli_epi16( v2, c ), \
-                                     _mm256_slli_epi16( v1, 16 - (c) ) )
-
-#endif
-*/
 
 //
 //           Bit rotations.
@@ -448,6 +368,16 @@ static inline __m256i mm256_not( const __m256i v )
 #define mm256_shufll_64( v )    _mm256_permute4x64_epi64( v, 0x93 )
 
 // Rotate 256 bit vector by one 32 bit element.
+#if defined(__AVX512VL__)
+
+static inline __m256i mm256_shuflr_32( const __m256i v )
+{ return _mm256_alignr_epi32( v, v, 1 ); }
+
+static inline __m256i mm256_shufll_32( const __m256i v )
+{ return _mm256_alignr_epi32( v, v, 15 ); }
+
+#else
+
 #define mm256_shuflr_32( v ) \
     _mm256_permutevar8x32_epi32( v, \
                      m256_const_64( 0x0000000000000007, 0x0000000600000005, \
@@ -457,6 +387,8 @@ static inline __m256i mm256_not( const __m256i v )
     _mm256_permutevar8x32_epi32( v, \
                      m256_const_64( 0x0000000600000005,  0x0000000400000003, \
                                     0x0000000200000001,  0x0000000000000007 ) )
+
+#endif
 
 //
 // Rotate elements within each 128 bit lane of 256 bit vector.
@@ -492,8 +424,7 @@ static inline __m256i mm256_shuflr128_x8( const __m256i v, const int c )
   #define mm256_shuflr64_24( v )  _mm256_ror_epi64( v, 24 )
 #else
   #define mm256_shuflr64_24( v ) \
-    _mm256_shuffle_epi8( v, _mm256_set_epi64x( \
-                                    0x0a09080f0e0d0c0b, 0x0201000706050403, \
+    _mm256_shuffle_epi8( v, m256_const2_64( \
                                     0x0a09080f0e0d0c0b, 0x0201000706050403 ) )
 #endif
 
@@ -501,8 +432,7 @@ static inline __m256i mm256_shuflr128_x8( const __m256i v, const int c )
   #define mm256_shuflr64_16( v )  _mm256_ror_epi64( v, 16 )
 #else
   #define mm256_shuflr64_16( v ) \
-    _mm256_shuffle_epi8( v, _mm256_set_epi64x( \
-                                    0x09080f0e0d0c0b0a, 0x0100070605040302, \
+    _mm256_shuffle_epi8( v, m256_const2_64( \
                                     0x09080f0e0d0c0b0a, 0x0100070605040302 ) )
 #endif
 
@@ -510,8 +440,7 @@ static inline __m256i mm256_shuflr128_x8( const __m256i v, const int c )
   #define mm256_swap32_16( v )  _mm256_ror_epi32( v, 16 )
 #else
   #define mm256_swap32_16( v ) \
-    _mm256_shuffle_epi8( v, _mm256_set_epi64x( \
-                                    0x0d0c0f0e09080b0a, 0x0504070601000302, \
+    _mm256_shuffle_epi8( v, m256_const2_64( \
                                     0x0d0c0f0e09080b0a, 0x0504070601000302 ) )
 #endif
 #define mm256_shuflr32_16 mm256_swap32_16
@@ -526,35 +455,24 @@ static inline __m256i mm256_shuflr128_x8( const __m256i v, const int c )
                                     0x0c0f0e0d080b0a09, 0x0407060500030201 ) )
 #endif
 
-// NOTE: _mm256_shuffle_epi8, like most shuffles, is restricted to 128 bit
-// lanes. AVX512, however, supports full vector 8 bit shuffle. The AVX512VL +
-// AVX512BW intrinsic _mm256_mask_shuffle_epi8 with a NULL mask, can be used if
-// needed for a shuffle that crosses 128 bit lanes. BSWAP doesn't therefore the
-// AVX2 version will work here. The bswap control vector is coded to work
-// with both versions, bit 4 is ignored in AVX2. 
-
 // Reverse byte order in elements, endian bswap.
 #define mm256_bswap_64( v ) \
    _mm256_shuffle_epi8( v, \
-         m256_const_64( 0x18191a1b1c1d1e1f, 0x1011121314151617, \
-                        0x08090a0b0c0d0e0f, 0x0001020304050607 ) )
+         m256_const2_64( 0x08090a0b0c0d0e0f, 0x0001020304050607 ) )
 
 #define mm256_bswap_32( v ) \
    _mm256_shuffle_epi8( v, \
-         m256_const_64( 0x1c1d1e1f18191a1b, 0x1415161710111213, \
-                        0x0c0d0e0f08090a0b, 0x0405060700010203 ) )
+         m256_const2_64( 0x0c0d0e0f08090a0b, 0x0405060700010203 ) )
 
 #define mm256_bswap_16( v ) \
    _mm256_shuffle_epi8( v, \
-         m256_const_64( 0x1e1f1c1d1a1b1819, 0x1617141512131011, \
-                        0x0e0f0c0d0a0b0809, 0x0607040502030001, ) )
+         m256_const2_64( 0x0e0f0c0d0a0b0809, 0x0607040502030001, ) )
 
 // Source and destination are pointers, may point to same memory.
 // 8 byte qword * 8 qwords * 4 lanes = 256 bytes
 #define mm256_block_bswap_64( d, s ) do \
 { \
-  __m256i ctl = m256_const_64( 0x18191a1b1c1d1e1f, 0x1011121314151617, \
-                               0x08090a0b0c0d0e0f, 0x0001020304050607 ) ; \
+  __m256i ctl = m256_const2_64( 0x08090a0b0c0d0e0f, 0x0001020304050607 ) ; \
   casti_m256i( d, 0 ) = _mm256_shuffle_epi8( casti_m256i( s, 0 ), ctl ); \
   casti_m256i( d, 1 ) = _mm256_shuffle_epi8( casti_m256i( s, 1 ), ctl ); \
   casti_m256i( d, 2 ) = _mm256_shuffle_epi8( casti_m256i( s, 2 ), ctl ); \
@@ -568,8 +486,7 @@ static inline __m256i mm256_shuflr128_x8( const __m256i v, const int c )
 // 4 byte dword * 8 dwords * 8 lanes = 256 bytes
 #define mm256_block_bswap_32( d, s ) do \
 { \
-  __m256i ctl = m256_const_64( 0x1c1d1e1f18191a1b, 0x1415161710111213, \
-                               0x0c0d0e0f08090a0b, 0x0405060700010203 ); \
+  __m256i ctl = m256_const2_64( 0x0c0d0e0f08090a0b, 0x0405060700010203 ); \
   casti_m256i( d, 0 ) = _mm256_shuffle_epi8( casti_m256i( s, 0 ), ctl ); \
   casti_m256i( d, 1 ) = _mm256_shuffle_epi8( casti_m256i( s, 1 ), ctl ); \
   casti_m256i( d, 2 ) = _mm256_shuffle_epi8( casti_m256i( s, 2 ), ctl ); \
