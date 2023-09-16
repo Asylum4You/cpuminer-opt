@@ -48,7 +48,7 @@ static void allium_16way_hash( void *state, const void *midstate_vars,
    uint32_t hash15[8] __attribute__ ((aligned (32)));
    allium_16way_ctx_holder ctx __attribute__ ((aligned (64)));
 
-   blake256_16way_final_rounds_le( vhash, midstate_vars, midhash, block );
+   blake256_16way_final_rounds_le( vhash, midstate_vars, midhash, block, 14 );
 
    dintrlv_16x32( hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7,
                   hash8, hash9, hash10, hash11, hash12, hash13, hash14, hash15,
@@ -212,12 +212,12 @@ int scanhash_allium_16way( struct work *work, uint32_t max_nonce,
    const uint32_t last_nonce = max_nonce - 16;
    const int thr_id = mythr->id;
    const bool bench = opt_benchmark;
-   const __m512i sixteen = m512_const1_32( 16 );
+   const __m512i sixteen = _mm512_set1_epi32( 16 );
 
    if ( bench ) ( (uint32_t*)ptarget )[7] = 0x0000ff;
 
    // Prehash first block.
-   blake256_transform_le( phash, pdata, 512, 0 );
+   blake256_transform_le( phash, pdata, 512, 0, 14 );
 
    // Interleave hash for second block prehash.
    block0_hash[0] = _mm512_set1_epi32( phash[0] );
@@ -286,7 +286,7 @@ static void allium_8way_hash( void *hash, const void *midstate_vars,
    uint64_t *hash7 = (uint64_t*)hash+28;
    allium_8way_ctx_holder ctx __attribute__ ((aligned (64))); 
 
-   blake256_8way_final_rounds_le( vhashA, midstate_vars, midhash, block );
+   blake256_8way_final_rounds_le( vhashA, midstate_vars, midhash, block, 14 );
 
    dintrlv_8x32( hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7,
                  vhashA, 256 );
@@ -398,10 +398,10 @@ int scanhash_allium_8way( struct work *work, uint32_t max_nonce,
    uint32_t n = first_nonce;
    const int thr_id = mythr->id;  
    const bool bench = opt_benchmark;
-   const __m256i eight = m256_const1_32( 8 );
+   const __m256i eight = _mm256_set1_epi32( 8 );
 
    // Prehash first block
-   blake256_transform_le( phash, pdata, 512, 0 );
+   blake256_transform_le( phash, pdata, 512, 0, 14 );
 
    block0_hash[0] = _mm256_set1_epi32( phash[0] );
    block0_hash[1] = _mm256_set1_epi32( phash[1] );

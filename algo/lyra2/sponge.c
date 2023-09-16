@@ -41,17 +41,17 @@
 inline void initState( uint64_t State[/*16*/] )
 {
 
-   /*
+/*
 #if defined (__AVX2__)
 
   __m256i* state = (__m256i*)State;
   const __m256i zero = m256_zero; 
   state[0] = zero;
   state[1] = zero;
-  state[2] = m256_const_64( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL,
-                            0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
-  state[3] = m256_const_64( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL,
-                            0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
+  state[2] = _mm256_set_epi64x( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL,
+                                0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
+  state[3] = _mm256_set_epi64x( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL,
+                                0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
 
 #elif defined (__SSE2__)
 
@@ -62,10 +62,10 @@ inline void initState( uint64_t State[/*16*/] )
   state[1] = zero;
   state[2] = zero;
   state[3] = zero;
-  state[4] = m128_const_64( 0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
-  state[5] = m128_const_64( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL );
-  state[6] = m128_const_64( 0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
-  state[7] = m128_const_64( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL );
+  state[4] = _mm_set_epi64x( 0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
+  state[5] = _mm_set_epi64x( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL );
+  state[6] = _mm_set_epi64x( 0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
+  state[7] = _mm_set_epi64x( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL );
 
 #else
     //First 512 bis are zeros
@@ -271,10 +271,10 @@ inline void absorbBlockBlake2Safe( uint64_t *State, const uint64_t *In,
 
   state0 = 
   state1 = m256_zero;
-  state2 = m256_const_64( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL,
-                          0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
-  state3 = m256_const_64( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL,
-                          0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
+  state2 = _mm256_set_epi64x( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL,
+                              0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
+  state3 = _mm256_set_epi64x( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL,
+                              0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
 
   for ( int i = 0; i < nBlocks; i++ )
   { 
@@ -299,10 +299,10 @@ inline void absorbBlockBlake2Safe( uint64_t *State, const uint64_t *In,
   state1 =
   state2 =
   state3 = m128_zero;
-  state4 = m128_const_64( 0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
-  state5 = m128_const_64( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL );
-  state6 = m128_const_64( 0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
-  state7 = m128_const_64( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL );
+  state4 = _mm_set_epi64x( 0xbb67ae8584caa73bULL, 0x6a09e667f3bcc908ULL );
+  state5 = _mm_set_epi64x( 0xa54ff53a5f1d36f1ULL, 0x3c6ef372fe94f82bULL );
+  state6 = _mm_set_epi64x( 0x9b05688c2b3e6c1fULL, 0x510e527fade682d1ULL );
+  state7 = _mm_set_epi64x( 0x5be0cd19137e2179ULL, 0x1f83d9abfb41bd6bULL );
 
   for ( int i = 0; i < nBlocks; i++ )
   { 

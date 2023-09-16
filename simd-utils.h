@@ -15,10 +15,6 @@
 //    data but not for vectors. The main categories are bit rotation
 //    and endian byte swapping
 //
-//    An attempt was made to make the names as similar as possible to
-//    Intel's intrinsic function format. Most variations are to avoid
-//    confusion with actual Intel intrinsics, brevity, and clarity.
-//
 //    This suite supports some operations on regular 64 bit integers
 //    as well as 128 bit integers available on recent versions of Linux
 //    and GCC.
@@ -37,21 +33,15 @@
 //    SSE2:   128 bit vectors  (64 bit CPUs only, such as Intel Core2.
 //    AVX2:   256 bit vectors  (Starting with Intel Haswell and AMD Ryzen)
 //    AVX512: 512 bit vectors  (Starting with SkylakeX)
+//    AVX10:  when available will supersede AVX512 and will bring AVX512
+//        features, except 512 bit vectors, to Intel's Ecores. It needs to be
+//        enabled manually when the relevant GCC macros are known.
 //
 //    Most functions are avalaible at the stated levels but in rare cases
 //    a higher level feature may be required with no compatible alternative.
 //    Some SSE2 functions have versions optimized for higher feature levels
 //    such as SSSE3 or SSE4.1 that will be used automatically on capable
 //    CPUs.
-//
-//    The vector size boundaries are respected to maintain compatibility.
-//    For example, an instruction introduced with AVX2 may improve 128 bit
-//    vector performance but will not be implemented. A CPU with AVX2 will
-//    tend to use 256 bit vectors. On a practical level AVX512 does introduce
-//    bit rotation instructions for 128 and 256 bit vectors in addition to
-//    its own 5a12 bit vectors. These will not be back ported to replace the
-//    SW implementations for the smaller vectors. This policy may be reviewed
-//    in the future once AVX512 is established. 
 //
 //    Strict alignment of data is required: 16 bytes for 128 bit vectors,
 //    32 bytes for 256 bit vectors and 64 bytes for 512 bit vectors. 64 byte
@@ -62,43 +52,33 @@
 //    for the applications but also adds responsibility to ensure adequate data
 //    alignment.
 //
-//    Windows has problems with function vector arguments larger than
-//    128 bits. Stack alignment is only guaranteed to 16 bytes. Always use
-//    pointers for larger vectors in function arguments. Macros can be used
-//    for larger value arguments.
-//
 //    An attempt was made to make the names as similar as possible to
 //    Intel's intrinsic function format. Most variations are to avoid
-//    confusion with actual Intel intrinsics, brevity, and clarity
+//    confusion with actual Intel intrinsics, brevity, and clarity.
 //
 //    The main differences are:
 //
-//   - the leading underscore(s) "_" and the "i" are dropped from the
-//     prefix of vector instructions.
-//   - "mm64" and "mm128" used for 64 and 128 bit prefix respectively
-//     to avoid the ambiguity of "mm".
+//   - the leading underscore "_" is dropped from the prefix of vector function
+//     macros.
+//   - "mm128" is used 128 bit prefix to be consistent with mm256 & mm512 and
+//     to avoid the ambiguity of "mm" which is also used for 64 bit MMX
+//     intrinsics.
 //   - the element size does not include additional type specifiers
 //      like "epi".
-//   - some macros may contain value args that are updated.
-//   - specialized shift and rotate functions that move elements around
-//     use the notation "1x32" to indicate the distance moved as units of
-//     the element size.
-//     Vector shuffle rotations are being renamed to "vrol" and "vror"
-//     to avoid confusion with bit rotations.
 //   - there is a subset of some functions for scalar data. They may have
 //     no prefix nor vec-size, just one size, the size of the data.
 //   - Some integer functions are also defined which use a similar notation.
 //   
 //    Function names follow this pattern:
 //
-//         prefix_op[vsize]_[esize]
+//         [prefix]_[op][vsize]_[esize]
 //
 //    Prefix: usually the size of the returned vector.
 //    Following are some examples:
 //
 //    u64:  unsigned 64 bit integer function
 //    i128: signed 128 bit integer function (rarely used)
-//    m128: 128 bit vector identifier
+//    m128: 128 bit vector identifier (deprecated)
 //    mm128: 128 bit vector function
 //
 //    op: describes the operation of the function or names the data
@@ -109,9 +89,7 @@
 //    vsize: optional, lane size used when a function operates on elements
 //           within lanes of a larger vector.
 //
-//    m256_const_64 defines a vector contructed from the supplied 64 bit
-//        integer arguments.
-//    mm256_shuflr128_32 rotates each 128 bit lane of a 256 bit vector
+//    Ex: mm256_shuflr128_32 rotates each 128 bit lane of a 256 bit vector
 //        right by 32 bits.
 //
 // Vector constants
@@ -137,12 +115,6 @@
 // If a vector constant is to be used repeatedly it is better to define a local
 // variable to generate the constant only once.
 //
-// If a sequence of constants is to be used it can be more efficient to
-// use arithmetic with already existing constants to generate new ones.
-//
-// ex: const __m512i one = m512_one_64;
-//     const __m512i two = _mm512_add_epi64( one, one );
-//     
 //////////////////////////////////////////////////////////////////////////
 
 #include <inttypes.h>

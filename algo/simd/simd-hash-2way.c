@@ -212,14 +212,24 @@ do { \
 // targetted
 #define shufxor2w(x,s) _mm256_shuffle_epi32( x, XCAT( SHUFXOR_, s ))
 
+#if defined(__AVX512VL__)
+//TODO Enable for AVX10_256
+
 #define REDUCE(x) \
-  _mm256_sub_epi16( _mm256_and_si256( x, m256_const1_64( \
+  _mm256_sub_epi16( _mm256_maskz_mov_epi8( 0x55555555, x ), \
+                    _mm256_srai_epi16( x, 8 ) )
+#else
+
+#define REDUCE(x) \
+  _mm256_sub_epi16( _mm256_and_si256( x, _mm256_set1_epi64x( \
                          0x00ff00ff00ff00ff ) ), _mm256_srai_epi16( x, 8 ) )
+
+#endif
 
 #define EXTRA_REDUCE_S(x)\
   _mm256_sub_epi16( x, _mm256_and_si256( \
-             m256_const1_64( 0x0101010101010101 ), \
-             _mm256_cmpgt_epi16( x, m256_const1_64( 0x0080008000800080 ) ) ) )
+          _mm256_set1_epi64x( 0x0101010101010101 ), \
+          _mm256_cmpgt_epi16( x, _mm256_set1_epi64x( 0x0080008000800080 ) ) ) )
 
 #define REDUCE_FULL_S( x )  EXTRA_REDUCE_S( REDUCE (x ) )
 
@@ -387,17 +397,11 @@ static const m512_v16 FFT256_Twiddle4w[] =
   _mm512_sub_epi16( _mm512_maskz_mov_epi8( 0x5555555555555555, x ), \
                     _mm512_srai_epi16( x, 8 ) )
 
-/*
-#define REDUCE4w(x) \
-  _mm512_sub_epi16( _mm512_and_si512( x, m512_const1_64( \
-                         0x00ff00ff00ff00ff ) ), _mm512_srai_epi16( x, 8 ) )
-*/
-
 #define EXTRA_REDUCE_S4w(x) \
   _mm512_sub_epi16( x, _mm512_and_si512( \
-             m512_const1_64( 0x0101010101010101 ), \
+             _mm512_set1_epi64( 0x0101010101010101 ), \
              _mm512_movm_epi16( _mm512_cmpgt_epi16_mask( \
-                               x, m512_const1_64( 0x0080008000800080 ) ) ) ) )
+                             x, _mm512_set1_epi64( 0x0080008000800080 ) ) ) ) )
 
 // generic, except it calls targetted macros
 #define REDUCE_FULL_S4w( x )  EXTRA_REDUCE_S4w( REDUCE4w (x ) )
@@ -484,14 +488,7 @@ do { \
 #undef BUTTERFLY_0
 #undef BUTTERFLY_N
 
-// twiddle is hard coded  T[0] = m512_const2_64( {128,64,32,16}, {8,4,2,1} )  
   // Multiply by twiddle factors
-//  X(6) = _mm512_mullo_epi16( X(6), m512_const2_64( 0x0080004000200010,
-//                                                   0x0008000400020001 );
-//  X(5) = _mm512_mullo_epi16( X(5), m512_const2_64( 0xffdc0008ffef0004,
-//                                                   0x00780002003c0001 );
-
-
   X(6) = _mm512_mullo_epi16( X(6), FFT64_Twiddle4w[0].v512 );
   X(5) = _mm512_mullo_epi16( X(5), FFT64_Twiddle4w[1].v512 );
   X(4) = _mm512_mullo_epi16( X(4), FFT64_Twiddle4w[2].v512 );
