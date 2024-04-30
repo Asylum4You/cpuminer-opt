@@ -29,7 +29,7 @@
 //    is no significant 64 bit vectorization therefore SSE2 is the practical
 //    minimum for using this code.
 //
-//    MMX:     64 bit vectors  
+//    MMX:     64 bit vectors  (Not used in cpuminer-opt) 
 //    SSE2:   128 bit vectors  (64 bit CPUs only, such as Intel Core2.
 //    AVX2:   256 bit vectors  (Starting with Intel Haswell and AMD Ryzen)
 //    AVX512: 512 bit vectors  (Starting with SkylakeX)
@@ -91,6 +91,23 @@
 //
 //    Ex: mm256_shuflr128_32 rotates each 128 bit lane of a 256 bit vector
 //        right by 32 bits.
+// 
+//  New architecture agnostic syntax to support multiple architectures.
+//  currently only used for 128 bit vectors.
+//
+//         [prefix]_[op]esize]
+//
+//  Abbreviated when no vsize, space is removed between op & esize.
+//
+//  Ex:  v128_add32 gets remapped to the appropriate architecture intrinsic.
+//
+//  New type specification includes element size because it's significant on
+//  AArch64. For x86_64 they'r all maped to v128_t. On arm the default is
+//  v128u32_t.
+//
+//   v128_t, v1q28u64_t, v128u32_t.
+//
+//  [prefix] is changed to "v128" or size specific for typedef.
 //
 // Vector constants
 //
@@ -118,44 +135,41 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <inttypes.h>
-#include <x86intrin.h>
 #include <memory.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 
-// 64 and 128 bit integers.
+#if defined(__x86_64__)
+
+#include <x86intrin.h>
+
+#elif defined(__aarch64__)
+
+#include <arm_neon.h>
+
+#endif
+
 #include "simd-utils/simd-int.h"
 
-#if defined(__MMX__)
-
-// 64 bit vectors
+// x86_64 MMX 64 bit vectors
 #include "simd-utils/simd-64.h"
 
-#if defined(__SSE2__)
-
-// 128 bit vectors
+// x86_64 SSE2 128 bit vectors
 #include "simd-utils/simd-128.h"
 
-#if defined(__AVX__)
-
-// 256 bit vector basics
+// x86_64 AVX2 256 bit vectors
 #include "simd-utils/simd-256.h"
 
-#if defined(__AVX2__)
-
-// Utilities that require AVX2 are defined in simd-256.h.
-
-// Skylake-X has all these
-#if defined(__AVX512F__) && defined(__AVX512VL__) && defined(__AVX512DQ__) && defined(__AVX512BW__)
-
-// 512 bit vectors
+// x86_64 AVX512 512 bit vectors
 #include "simd-utils/simd-512.h"
 
-#endif  // AVX512
-#endif  // AVX2
-#endif  // AVX
-#endif  // SSE2
-#endif  // MMX
+// move up after cleaning
+// CPU architectire abstraction
+//#include "simd-utils/simd-portable.h"
+
+// aarch64 neon 128 bit vectors
+#include "simd-utils/simd-neon.h"
 
 #include "simd-utils/intrlv.h"
 

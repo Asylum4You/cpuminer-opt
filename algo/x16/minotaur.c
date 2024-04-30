@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "algo/blake/sph_blake.h"
+#include "algo/blake/blake512-hash.h"
 #include "algo/bmw/sph_bmw.h"
 #include "algo/jh/sph_jh.h"
 #include "algo/keccak/sph_keccak.h"
@@ -13,19 +13,25 @@
 #include "algo/shavite/sph_shavite.h"
 #include "algo/luffa/luffa_for_sse2.h"
 #include "algo/cubehash/cubehash_sse2.h"
-#include "algo/simd/nist.h"
+#include "algo/simd/simd-hash-2way.h"
 #include "algo/hamsi/sph_hamsi.h"
 #include "algo/shabal/sph_shabal.h"
 #include "algo/whirlpool/sph_whirlpool.h"
 #include "algo/sha/sph_sha2.h"
 #include "algo/yespower/yespower.h"
-#if defined(__AES__)
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
   #include "algo/echo/aes_ni/hash_api.h"
-  #include "algo/groestl/aes_ni/hash-groestl.h"
-  #include "algo/fugue/fugue-aesni.h"
 #else
   #include "algo/echo/sph_echo.h"
+#endif
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
+ #include "algo/groestl/aes_ni/hash-groestl.h"
+#else
   #include "algo/groestl/sph_groestl.h"
+#endif
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
+  #include "algo/fugue/fugue-aesni.h"
+#else
   #include "algo/fugue/sph_fugue.h"
 #endif
 
@@ -41,28 +47,34 @@ typedef struct TortureGarden TortureGarden;
 // Graph of hash algos plus SPH contexts
 struct TortureGarden
 {
-#if defined(__AES__)
-        hashState_echo          echo;
-        hashState_groestl       groestl;
-        hashState_fugue         fugue;
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
+   hashState_groestl       groestl;
 #else
-        sph_echo512_context     echo;
-        sph_groestl512_context  groestl;
-        sph_fugue512_context    fugue;
+   sph_groestl512_context  groestl;
 #endif
-        sph_blake512_context    blake;
-        sph_bmw512_context      bmw;
-        sph_skein512_context    skein;
-        sph_jh512_context       jh;
-        sph_keccak512_context   keccak;
-        hashState_luffa         luffa;
-        cubehashParam           cube;
-        shavite512_context      shavite;
-        hashState_sd            simd;
-        sph_hamsi512_context    hamsi;
-        sph_shabal512_context   shabal;
-        sph_whirlpool_context   whirlpool;
-        sph_sha512_context      sha512;
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
+   hashState_echo          echo;
+#else
+   sph_echo512_context     echo;
+#endif
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
+   hashState_fugue         fugue;
+#else
+   sph_fugue512_context    fugue;
+#endif
+   blake512_context        blake;
+   sph_bmw512_context      bmw;
+   sph_skein512_context    skein;
+   sph_jh512_context       jh;
+   sph_keccak512_context   keccak;
+   cubehashParam           cube;
+   shavite512_context      shavite;
+   hashState_luffa         luffa;
+   simd512_context         simd;
+   sph_hamsi512_context    hamsi;
+   sph_shabal512_context   shabal;
+   sph_whirlpool_context   whirlpool;
+   sph_sha512_context      sha512;
     struct TortureNode
     {
         unsigned int algo;
@@ -80,50 +92,46 @@ static int get_hash( void *output, const void *input, TortureGarden *garden,
     switch ( algo )
     {
         case 0:
-            sph_blake512_init(&garden->blake);
-            sph_blake512(&garden->blake, input, 64);
-            sph_blake512_close(&garden->blake, hash);
+            blake512_full( &garden->blake, hash, input, 64 );
             break;
         case 1:
-            sph_bmw512_init(&garden->bmw);
-            sph_bmw512(&garden->bmw, input, 64);
-            sph_bmw512_close(&garden->bmw, hash);        
+            sph_bmw512_init( &garden->bmw );
+            sph_bmw512( &garden->bmw, input, 64 );
+            sph_bmw512_close( &garden->bmw, hash );        
             break;
         case 2:
             cubehashInit( &garden->cube, 512, 16, 32 );
-            cubehashUpdateDigest( &garden->cube, (byte*)hash,
-			         (const byte*)input, 64 );
+            cubehashUpdateDigest( &garden->cube, hash, input, 64 );
             break;
         case 3:
-#if defined(__AES__)
-            echo_full( &garden->echo, (BitSequence *)hash, 512,
-                              (const BitSequence *)input, 64 );
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
+            echo_full( &garden->echo, hash, 512, input, 64 );
 #else
-            sph_echo512_init(&garden->echo);
-            sph_echo512(&garden->echo, input, 64);
-            sph_echo512_close(&garden->echo, hash);          
+            sph_echo512_init( &garden->echo );
+            sph_echo512( &garden->echo, input, 64 );
+            sph_echo512_close( &garden->echo, hash );          
 #endif
 	         break;
         case 4:
-#if defined(__AES__)
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
             fugue512_full( &garden->fugue, hash, input, 64 );
 #else
             sph_fugue512_full( &garden->fugue, hash, input, 64 );
 #endif
 	         break;
         case 5:
-#if defined(__AES__)
-            groestl512_full( &garden->groestl, (char*)hash, (char*)input, 512 );
+#if defined(__AES__) || defined(__ARM_FEATURE_AES)
+            groestl512_full( &garden->groestl, hash, input, 512 );
 #else
-            sph_groestl512_init(&garden->groestl);
-            sph_groestl512(&garden->groestl, input, 64);
-            sph_groestl512_close(&garden->groestl, hash);          
+            sph_groestl512_init( &garden->groestl) ;
+            sph_groestl512( &garden->groestl, input, 64 );
+            sph_groestl512_close( &garden->groestl, hash );          
 #endif
 	         break;
         case 6:
-            sph_hamsi512_init(&garden->hamsi);
-            sph_hamsi512(&garden->hamsi, input, 64);
-            sph_hamsi512_close(&garden->hamsi, hash);          
+            sph_hamsi512_init( &garden->hamsi );
+            sph_hamsi512( &garden->hamsi, input, 64 );
+            sph_hamsi512_close( &garden->hamsi, hash );          
             break;
         case 7:
             sph_sha512_init( &garden->sha512 );
@@ -131,44 +139,40 @@ static int get_hash( void *output, const void *input, TortureGarden *garden,
             sph_sha512_close( &garden->sha512, hash );
             break;
         case 8:
-            sph_jh512_init(&garden->jh);
-            sph_jh512(&garden->jh, input, 64);
-            sph_jh512_close(&garden->jh, hash);          
+            sph_jh512_init( &garden->jh );
+            sph_jh512( &garden->jh, input, 64 );
+            sph_jh512_close( &garden->jh, hash );          
             break;
         case 9:
-            sph_keccak512_init(&garden->keccak);
-            sph_keccak512(&garden->keccak, input, 64);
-            sph_keccak512_close(&garden->keccak, hash);
+            sph_keccak512_init( &garden->keccak );
+            sph_keccak512( &garden->keccak, input, 64 );
+            sph_keccak512_close( &garden->keccak, hash );
             break;
         case 10:
-            init_luffa( &garden->luffa, 512 );
-            update_and_final_luffa( &garden->luffa, (BitSequence*)hash,
-                                    (const BitSequence*)input, 64 );
+            luffa_full( &garden->luffa, hash, 512, input, 64 );
             break;
         case 11:
-            sph_shabal512_init(&garden->shabal);
-            sph_shabal512(&garden->shabal, input, 64);
-            sph_shabal512_close(&garden->shabal, hash);          
+            sph_shabal512_init( &garden->shabal );
+            sph_shabal512( &garden->shabal, input, 64 );
+            sph_shabal512_close( &garden->shabal, hash );          
             break;
         case 12:
-            sph_shavite512_init(&garden->shavite);
-            sph_shavite512(&garden->shavite, input, 64);
-            sph_shavite512_close(&garden->shavite, hash);          
+            sph_shavite512_init( &garden->shavite );
+            sph_shavite512( &garden->shavite, input, 64 );
+            sph_shavite512_close( &garden->shavite, hash );          
             break;
         case 13:
-            init_sd( &garden->simd, 512 );
-            update_final_sd( &garden->simd, (BitSequence *)hash,
-                              (const BitSequence*)input, 512 );
+            simd512_ctx( &garden->simd, hash, input, 64 );
             break;
         case 14:
-            sph_skein512_init(&garden->skein);
-            sph_skein512(&garden->skein, input, 64);
-            sph_skein512_close(&garden->skein, hash);          
+            sph_skein512_init( &garden->skein );
+            sph_skein512( &garden->skein, input, 64 );
+            sph_skein512_close( &garden->skein, hash );          
             break;
         case 15:
-            sph_whirlpool_init(&garden->whirlpool);
-            sph_whirlpool(&garden->whirlpool, input, 64);
-            sph_whirlpool_close(&garden->whirlpool, hash);          
+            sph_whirlpool_init( &garden->whirlpool );
+            sph_whirlpool( &garden->whirlpool, input, 64 );
+            sph_whirlpool_close( &garden->whirlpool, hash );          
             break;
         case 16: // minotaurx only, yespower hardcoded for last node
             rc = yespower_tls( input, 64, &minotaurx_yespower_params,
@@ -287,7 +291,7 @@ int scanhash_minotaur( struct work *work, uint32_t max_nonce,
    const bool bench = opt_benchmark;
    uint64_t skipped = 0;
 
-   mm128_bswap32_80( edata, pdata );
+   v128_bswap32_80( edata, pdata );
    do
    {
       edata[19] = n;
@@ -313,7 +317,7 @@ bool register_minotaur_algo( algo_gate_t* gate )
   gate->scanhash          = (void*)&scanhash_minotaur;
   gate->hash              = (void*)&minotaur_hash;
   gate->miner_thread_init = (void*)&initialize_torture_garden;
-  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT;
+  gate->optimizations = SSE2_OPT | AES_OPT | AVX2_OPT | AVX512_OPT | NEON_OPT;
   if ( opt_algo == ALGO_MINOTAURX ) gate->optimizations |= SHA_OPT;
   return true;
 };

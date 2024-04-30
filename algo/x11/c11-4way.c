@@ -2,7 +2,7 @@
 #include "c11-gate.h"
 #include <string.h>
 #include <stdint.h>
-#include "algo/blake/blake-hash-4way.h"
+#include "algo/blake/blake512-hash.h"
 #include "algo/bmw/bmw-hash-4way.h"
 #include "algo/groestl/aes_ni/hash-groestl.h"
 #include "algo/skein/skein-hash-4way.h"
@@ -204,11 +204,11 @@ int scanhash_c11_8way( struct work *work, uint32_t max_nonce,
    const __m512i eight = _mm512_set1_epi64( 8 );
    const bool bench = opt_benchmark;
 
-   edata[0] = mm128_swap64_32( casti_m128i( pdata, 0 ) );
-   edata[1] = mm128_swap64_32( casti_m128i( pdata, 1 ) );
-   edata[2] = mm128_swap64_32( casti_m128i( pdata, 2 ) );
-   edata[3] = mm128_swap64_32( casti_m128i( pdata, 3 ) );
-   edata[4] = mm128_swap64_32( casti_m128i( pdata, 4 ) );
+   edata[0] = v128_swap64_32( casti_m128i( pdata, 0 ) );
+   edata[1] = v128_swap64_32( casti_m128i( pdata, 1 ) );
+   edata[2] = v128_swap64_32( casti_m128i( pdata, 2 ) );
+   edata[3] = v128_swap64_32( casti_m128i( pdata, 3 ) );
+   edata[4] = v128_swap64_32( casti_m128i( pdata, 4 ) );
 
    mm512_intrlv80_8x64( vdata, edata );
    *noncev = _mm512_add_epi32( *noncev, _mm512_set_epi32(
@@ -372,11 +372,11 @@ int scanhash_c11_4way( struct work *work, uint32_t max_nonce,
    const __m256i four = _mm256_set1_epi64x( 4 );
    const bool bench = opt_benchmark;
 
-   edata[0] = mm128_swap64_32( casti_m128i( pdata, 0 ) );
-   edata[1] = mm128_swap64_32( casti_m128i( pdata, 1 ) );
-   edata[2] = mm128_swap64_32( casti_m128i( pdata, 2 ) );
-   edata[3] = mm128_swap64_32( casti_m128i( pdata, 3 ) );
-   edata[4] = mm128_swap64_32( casti_m128i( pdata, 4 ) );
+   edata[0] = v128_swap64_32( casti_m128i( pdata, 0 ) );
+   edata[1] = v128_swap64_32( casti_m128i( pdata, 1 ) );
+   edata[2] = v128_swap64_32( casti_m128i( pdata, 2 ) );
+   edata[3] = v128_swap64_32( casti_m128i( pdata, 3 ) );
+   edata[4] = v128_swap64_32( casti_m128i( pdata, 4 ) );
 
    mm256_intrlv80_4x64( vdata, edata );
 

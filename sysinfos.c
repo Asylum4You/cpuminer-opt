@@ -13,8 +13,15 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include "miner.h"
+#include "simd-utils.h"
+
+#if defined(__aarch64__) && !defined(__APPLE__)
+// for arm's "cpuid"
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+
+#endif
 
 #ifndef WIN32
 
@@ -135,26 +142,13 @@ static inline void linux_cpu_hilo_freq( float *lo, float *hi )
    *lo = (float)lo_freq;
 }
 
-
-#else /* WIN32 */
-
-static inline float win32_cputemp( int core )
-{
-	// todo
-	return 0.0;
-}
-
-
 #endif /* !WIN32 */
-
-
-/* exports */
 
 
 static inline float cpu_temp( int core )
 {
 #ifdef WIN32
-	return win32_cputemp( core );
+	return 0.;
 #else
 	return linux_cputemp( core );
 #endif
@@ -230,8 +224,8 @@ static inline int cpu_fanpercent()
 #define AVX512_F_Flag            (1<<16)
 #define AVX512_DQ_Flag           (1<<17)
 #define AVX512_IFMA_Flag         (1<<21)
-#define AVX512_PF_Flag           (1<<26)
-#define AVX512_ER_Flag           (1<<27)
+#define AVX512_PF_Flag           (1<<26)   // obsolete
+#define AVX512_ER_Flag           (1<<27)   // obsolete
 #define AVX512_CD_Flag           (1<<28)
 #define SHA_Flag                 (1<<29)
 #define AVX512_BW_Flag           (1<<30)
@@ -244,8 +238,8 @@ static inline int cpu_fanpercent()
 #define AVX512_BITALG_Flag       (1<<12)
 #define AVX512_VPOPCNTDQ_Flag    (1<<14)
 // EDX
-#define AVX512_4VNNIW_Flag       (1<< 2)
-#define AVX512_4FMAPS_Flag       (1<< 3)
+#define AVX512_4VNNIW_Flag       (1<< 2)   // obsolete
+#define AVX512_4FMAPS_Flag       (1<< 3)   // obsolete
 #define AVX512_VP2INTERSECT_Flag (1<< 8)
 #define AMX_BF16_Flag            (1<<22)
 #define AVX512_FP16_Flag         (1<<23)
@@ -282,10 +276,11 @@ static inline int cpu_fanpercent()
 #define AVX512_mask  (AVX512_VL_Flag|AVX512_BW_Flag|AVX512_DQ_Flag|AVX512_F_Flag)
 
 
-#ifndef __arm__
+#if defined(__x86_64__)
 static inline void cpuid( unsigned int leaf, unsigned int subleaf,
                           unsigned int output[4] )
 {
+
 #if defined (_MSC_VER) || defined (__INTEL_COMPILER)
    // Microsoft or Intel compiler, intrin.h included
    __cpuidex(output, leaf, subleaf );
@@ -313,7 +308,16 @@ static inline void cpuid( unsigned int leaf, unsigned int subleaf,
    }
 #endif
 }
-#else /* !__arm__ */
+
+#elif defined(__aarch64__) && !defined(__APPLE__)
+
+static inline void cpuid( unsigned int leaf, unsigned int subleaf,
+                          unsigned int output[4] )
+{
+    output[0] = getauxval(AT_HWCAP);
+}   
+
+#else
 #define cpuid(leaf, subleaf, out) out[0] = 0;
 #endif
 
@@ -421,6 +425,32 @@ static inline void cpu_getmodelid(char *outbuf, size_t maxsz)
 #endif
 }
  
+/*
+#ifdef __aarch64__
+#warning "__aarch64__"
+#endif
+#ifdef __ARM_ARCH
+#warning "__ARM_ARCH " __ARM_ARCH
+#endif
+#ifdef __ARM_NEON
+#warning "__ARM_NEON"
+#endif
+#ifdef __ARM_FEATURE_CRYPTO
+#warning "___ARM_FEATURE_CRYPTO"
+#endif
+#ifdef __ARM_FEATURE_AES
+#warning "___ARM_FEATURE_AES"
+#endif
+#ifdef __ARM_FEATURE_SHA2
+#warning "___ARM_FEATURE_SHA2"
+#endif
+#ifdef __ARM_FEATURE_SHA3
+#warning "___ARM_FEATURE_SHA3"
+#endif
+*/
+
+
+
 // Typical display format: AVX10.[version]_[vectorlength], if vector length is
 // omitted 256 is the default.
 //    Ex: AVX10.1_512
@@ -431,23 +461,333 @@ static inline void cpu_getmodelid(char *outbuf, size_t maxsz)
 //   1     1    1    1    = AVX10 512 bit max  (version 1 granite rapids)
 // Other combinations are not defined.
 
-// Test AVX10_flag before AVX10_FEATURES flags.
-static inline bool has_avx10()
+// No technical need for this, the code won't run if false.
+static inline bool cpu_arch_x86_64()
 {
-#ifdef __arm__
+#if defined(__x86_64__)
+   return true;
+#else
+   return false;
+#endif
+}
+
+static inline bool cpu_arch_aarch64()
+{
+#if defined(__aarch64__)
+   return true;
+#else
+   return false;
+#endif
+}   
+
+static inline bool has_sse()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( CPU_INFO, 0, cpu_info );
+   return cpu_info[ EDX_Reg ] & SSE_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_sse2()
+{
+#if defined(__x86_64__)
+    unsigned int cpu_info[4] = { 0 };
+    cpuid( CPU_INFO, 0, cpu_info );
+    return cpu_info[ EDX_Reg ] & SSE2_Flag;
+#else
+    return false;
+#endif
+}
+
+static inline bool has_ssse3()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( CPU_INFO, 0, cpu_info );
+   return cpu_info[ ECX_Reg ] & SSSE3_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_sse41()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( CPU_INFO, 0, cpu_info );
+   return cpu_info[ ECX_Reg ] & SSE41_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_sse42()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( CPU_INFO, 0, cpu_info );
+   return cpu_info[ ECX_Reg ] & SSE42_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_neon()
+{
+#if defined(__aarch64__) && !defined(__APPLE__)
+    unsigned int cpu_info[4] = { 0 };
+    return cpu_info[0];
+#else
+    return false;
+#endif
+}
+
+static inline bool has_aes_ni()
+{
+#if defined(__x86_64__)
+   if ( has_sse2() )
+   {
+      unsigned int cpu_info[4] = { 0 };
+      cpuid( CPU_INFO, 0, cpu_info );
+      return cpu_info[ ECX_Reg ] & AES_NI_Flag;
+   }
+   return false;
+#elif defined(__aarch64__) && !defined(__APPLE__)
+   if ( has_neon() )
+   {
+#if defined(KERNEL_HWCAP_AES)
+      return true;
+#else
+      return false;
+#endif
+/*      unsigned int cpu_info[4] = { 0 };
+      cpuid( 0, 0, cpu_info );
+      return cpu_info[0] & HWCAP_AES;
+*/   }
+   return false;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_avx()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( CPU_INFO, 0, cpu_info );
+   return ( ( cpu_info[ ECX_Reg ] & AVX_mask ) == AVX_mask );
+#else
+   return false;
+#endif
+}
+
+static inline bool has_avx2()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_FEATURES, 0, cpu_info );
+   return cpu_info[ EBX_Reg ] & AVX2_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_sha()
+{
+#if defined(__x86_64__)
+    if ( has_avx() )
+    {
+       unsigned int cpu_info[4] = { 0 };
+       cpuid( EXTENDED_FEATURES, 0, cpu_info );
+       return cpu_info[ EBX_Reg ] & SHA_Flag;
+    }
+    return false;
+#elif defined(__aarch64__) && !defined(__APPLE__)
+    if ( has_neon() )
+    {
+#if defined(KERNEL_HWCAP_SHA2)
+       return true;
+#else
+       return false;
+#endif
+/*       unsigned int cpu_info[4] = { 0 };
+       cpuid( 0, 0, cpu_info );
+       return cpu_info[0] & HWCAP_SHA2;
+*/    }
     return false;
 #else
+    return false;
+#endif
+}
+
+static inline bool has_sha512()
+{
+#if defined(__x86_64__)
+    if ( has_avx2() )
+    {
+       unsigned int cpu_info[4] = { 0 };
+       cpuid( EXTENDED_FEATURES, 1, cpu_info );
+       return cpu_info[ EAX_Reg ] & SHA512_Flag;
+    }
+    return false;
+#elif defined(__aarch64__) && !defined(__APPLE__)
+    if ( has_neon() )
+    {
+       unsigned int cpu_info[4] = { 0 };
+       cpuid( 0, 0, cpu_info );
+       return cpu_info[0] & HWCAP_SHA3;
+    }
+    return false;
+#else
+    return false;
+#endif
+}
+
+static inline bool has_avx512f()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_FEATURES, 0, cpu_info );
+   return cpu_info[ EBX_Reg ] & AVX512_F_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_avx512dq()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_FEATURES, 0, cpu_info );
+   return cpu_info[ EBX_Reg ] & AVX512_DQ_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_avx512bw()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_FEATURES, 0, cpu_info );
+   return cpu_info[ EBX_Reg ] & AVX512_BW_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_avx512vl()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_FEATURES, 0, cpu_info );
+   return cpu_info[ EBX_Reg ] & AVX512_VL_Flag;
+#else
+   return false;
+#endif
+}
+
+// baseline for useability
+static inline bool has_avx512()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_FEATURES, 0, cpu_info );
+   return ( ( cpu_info[ EBX_Reg ] & AVX512_mask ) == AVX512_mask );
+#else
+   return false;    
+#endif
+}
+
+static inline bool has_vaes()
+{
+#if defined(__x86_64__)
+   if ( has_avx2() )
+   {
+       unsigned int cpu_info[4] = { 0 };
+       cpuid( EXTENDED_FEATURES, 0, cpu_info );
+       return cpu_info[ ECX_Reg ] & VAES_Flag;
+   }
+   return false;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_vbmi()
+{
+#if defined(__x86_64__)
+    unsigned int cpu_info[4] = { 0 };
+    cpuid( EXTENDED_FEATURES, 0, cpu_info );
+    return cpu_info[ ECX_Reg ] & AVX512_VBMI_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_vbmi2()
+{
+#if defined(__x86_64__)
+    unsigned int cpu_info[4] = { 0 };
+    cpuid( EXTENDED_FEATURES, 0, cpu_info );
+    return cpu_info[ ECX_Reg ] & AVX512_VBMI2_Flag;
+#else
+    return false;
+#endif
+}
+
+// Obsolete, AMD only
+static inline bool has_xop()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_CPU_INFO, 0, cpu_info );
+   return cpu_info[ ECX_Reg ] & XOP_Flag;
+#else
+   return false;
+#endif
+}
+
+static inline bool has_fma3()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( CPU_INFO, 0, cpu_info );
+   return ( ( cpu_info[ ECX_Reg ] & FMA3_mask ) == FMA3_mask );
+#else
+   return false;
+#endif
+}
+
+static inline bool has_apx_f()
+{
+#if defined(__x86_64__)
+   unsigned int cpu_info[4] = { 0 };
+   cpuid( EXTENDED_FEATURES, 1, cpu_info );
+   return cpu_info[ EDX_Reg ] & APX_F_Flag;
+#else
+   return false;
+#endif
+}
+
+// Not much use on it's own
+static inline bool has_avx10()
+{
+#if defined(__x86_64__)
     unsigned int cpu_info[4] = { 0 };
     cpuid( EXTENDED_FEATURES, 1, cpu_info );
     return cpu_info[ EDX_Reg ] & AVX10_Flag;
+#else
+    return false;
 #endif
 }
 
 static inline unsigned int avx10_version()
 {
-#ifdef __arm__
-    return 0;
-#else
+#if defined(__x86_64__)
     if ( has_avx10() )
     {
        unsigned int cpu_info[4] = { 0 };
@@ -455,14 +795,15 @@ static inline unsigned int avx10_version()
        return cpu_info[ EBX_Reg ] & AVX10_VERSION_mask;
     }
     return 0;
+#else
+    return 0;
 #endif
 }
 
+// also includes 256 & 128
 static inline bool has_avx10_512()
 {
-#ifdef __arm__
-    return false;
-#else
+#if defined(__x86_64__)
     if ( has_avx10() )
     {
        unsigned int cpu_info[4] = { 0 };
@@ -470,14 +811,15 @@ static inline bool has_avx10_512()
        return cpu_info[ EBX_Reg ] & AVX10_512_Flag;
     }
     return false;
+#else
+    return false;
 #endif
 }
 
+// Includes 128 but may not include 512
 static inline bool has_avx10_256()
 {
-#ifdef __arm__
-    return false;
-#else
+#if defined(__x86_64__)
     if ( has_avx10() )
     {
        unsigned int cpu_info[4] = { 0 };
@@ -485,15 +827,15 @@ static inline bool has_avx10_256()
        return cpu_info[ EBX_Reg ] & AVX10_256_Flag;
     }
     return false;
+#else
+    return false;
 #endif
 }
 
 // Maximum vector length
 static inline unsigned int avx10_vector_length()
 {
-#ifdef __arm__
-    return 0;
-#else
+#if defined(__x86_64__)
     if ( has_avx10() )
     {
        unsigned int cpu_info[4] = { 0 };
@@ -502,210 +844,30 @@ static inline unsigned int avx10_vector_length()
           : ( cpu_info[ EBX_Reg ] & AVX10_256_Flag ? 256 : 0 );
     }
     return 0;
-#endif
-}    
-
-static inline bool has_sha()
-{
-#ifdef __arm__
-    return false;
 #else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ EBX_Reg ] & SHA_Flag;
+    return 0;
 #endif
 }
 
-static inline bool has_sse2()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( CPU_INFO, 0, cpu_info );
-    return cpu_info[ EDX_Reg ] & SSE2_Flag;
-#endif
-}
-
-// nehalem and above, no AVX on nehalem
-static inline bool has_aes_ni()
-{
-#ifdef __arm__
-	return false;
-#else
-	unsigned int cpu_info[4] = { 0 };
-        cpuid( CPU_INFO, 0, cpu_info );
-	return cpu_info[ ECX_Reg ] & AES_NI_Flag;
-#endif
-}
-
-// westmere and above
-static inline bool has_avx()
-{
-#ifdef __arm__
-        return false;
-#else
-        unsigned int cpu_info[4] = { 0 };
-        cpuid( CPU_INFO, 0, cpu_info );
-        return ( ( cpu_info[ ECX_Reg ] & AVX_mask ) == AVX_mask );
-#endif
-}
-
-// haswell and above
-static inline bool has_avx2()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ EBX_Reg ] & AVX2_Flag;
-#endif
-}
-
-static inline bool has_avx512f()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ EBX_Reg ] & AVX512_F_Flag;
-#endif
-}
-
-static inline bool has_avx512dq()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ EBX_Reg ] & AVX512_DQ_Flag;
-#endif
-}
-
-static inline bool has_avx512bw()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ EBX_Reg ] & AVX512_BW_Flag;
-#endif
-}
-
-static inline bool has_avx512vl()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ EBX_Reg ] & AVX512_VL_Flag;
-#endif
-}
-
-// Minimum to be useful
-static inline bool has_avx512()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return ( ( cpu_info[ EBX_Reg ] & AVX512_mask ) == AVX512_mask );
-#endif
-}
-
-static inline bool has_vaes()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ ECX_Reg ] & VAES_Flag;
-#endif
-}
-
-static inline bool has_vbmi()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ ECX_Reg ] & AVX512_VBMI_Flag;
-#endif
-}
-
-static inline bool has_vbmi2()
-{
-#ifdef __arm__
-    return false;
-#else
-    unsigned int cpu_info[4] = { 0 };
-    cpuid( EXTENDED_FEATURES, 0, cpu_info );
-    return cpu_info[ ECX_Reg ] & AVX512_VBMI2_Flag;
-#endif
-}
-
-// AMD only
-static inline bool has_xop()
-{
-#ifdef __arm__
-        return false;
-#else
-        unsigned int cpu_info[4] = { 0 };
-        cpuid( EXTENDED_CPU_INFO, 0, cpu_info );
-        return cpu_info[ ECX_Reg ] & XOP_Flag;
-#endif
-}
-
-static inline bool has_fma3()
-{
-#ifdef __arm__
-        return false;
-#else
-        unsigned int cpu_info[4] = { 0 };
-        cpuid( CPU_INFO, 0, cpu_info );
-        return ( ( cpu_info[ ECX_Reg ] & FMA3_mask ) == FMA3_mask );
-#endif
-}
-
-static inline bool has_sse42()
-{
-#ifdef __arm__
-        return false;
-#else
-        unsigned int cpu_info[4] = { 0 };
-        cpuid( CPU_INFO, 0, cpu_info );
-        return cpu_info[ ECX_Reg ] & SSE42_Flag;
-#endif
-}
-
-static inline bool has_sse()
-{
-#ifdef __arm__
-        return false;
-#else
-        unsigned int cpu_info[4] = { 0 };
-        cpuid( CPU_INFO, 0, cpu_info );
-        return cpu_info[ EDX_Reg ] & SSE_Flag;
-#endif
-}
 
 static inline uint32_t cpuid_get_highest_function_number()
 {
+#if defined(__x86_64__)
+ 
   unsigned int cpu_info[4] = {0};
   cpuid( VENDOR_ID, 0, cpu_info);
   return cpu_info[ EAX_Reg ];
+
+#else
+  return 0;  
+#endif
 }
 
+// out of date
 static inline void cpuid_get_highest_function( char* s )
 {
+#if defined(__x86_64__)
+
   uint32_t fn = cpuid_get_highest_function_number();
   switch (fn)
   {
@@ -724,11 +886,16 @@ static inline void cpuid_get_highest_function( char* s )
     default:
       sprintf( s, "undefined %x", fn );
   }
+
+#else
+  s = NULL;
+#endif
 }
 
+// out of date
 static inline void cpu_bestfeature(char *outbuf, size_t maxsz)
 {
-#ifdef __arm__
+#if defined(__arm__) || defined(__aarch64__)
 	sprintf(outbuf, "ARM");
 #else
 	int cpu_info[4] = { 0 };
@@ -758,9 +925,8 @@ static inline void cpu_bestfeature(char *outbuf, size_t maxsz)
 
 static inline void cpu_brand_string( char* s )
 {
-#ifdef __arm__
-        sprintf( s, "ARM" );
-#else
+#if defined(__x86_64__)
+
     int cpu_info[4] = { 0 };
     cpuid( VENDOR_ID, 0, cpu_info );
     if ( cpu_info[ EAX_Reg ] >= 4 )
@@ -772,6 +938,17 @@ static inline void cpu_brand_string( char* s )
         cpuid( CPU_BRAND_3, 0, cpu_info );
         memcpy( s + 32, cpu_info, sizeof(cpu_info) );
     }
+
+#elif defined(__arm__) || defined(__aarch64__)
+
+    unsigned int cpu_info[4] = { 0 };
+    cpuid( 0, 0, cpu_info );
+    sprintf( s, "ARM 64 bit CPU, HWCAP %08x", cpu_info[0] );
+
+#else
+
+    sprintf( s, "unknown CPU architecture" );
+
 #endif
 }    
 

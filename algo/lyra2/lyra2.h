@@ -21,9 +21,8 @@
 #define LYRA2_H_
 
 #include <stdint.h>
-#include "algo/sha/sha3-defs.h"
 
-//typedef unsigned char byte;
+typedef unsigned char byte;
 
 //Block length required so Blake2's Initialization Vector (IV) is not overwritten (THIS SHOULD NOT BE MODIFIED)
 #define BLOCK_LEN_BLAKE2_SAFE_INT64 8                                   //512 bits (=64 bytes, =8 uint64_t)
@@ -38,8 +37,8 @@
         #define BLOCK_LEN_BYTES (BLOCK_LEN_INT64 * 8)    //Block length, in bytes
 #endif
 
-#define BLOCK_LEN_M256I (BLOCK_LEN_INT64 / 4 )
-#define BLOCK_LEN_M128I (BLOCK_LEN_INT64 / 2 )
+#define BLOCK_LEN_256 (BLOCK_LEN_INT64 / 4 )
+#define BLOCK_LEN_128 (BLOCK_LEN_INT64 / 2 )
 
 int LYRA2RE( void *K, uint64_t kLen, const void *pwd,
              uint64_t pwdlen, const void *salt, uint64_t saltlen,

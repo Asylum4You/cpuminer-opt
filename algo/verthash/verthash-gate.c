@@ -101,7 +101,9 @@ int scanhash_verthash( struct work *work, uint32_t max_nonce,
    const int thr_id = mythr->id;
    const bool bench = opt_benchmark;
 
-   mm128_bswap32_80( edata, pdata );
+   for (int i = 0; i < 20; i++)
+         edata[i] = bswap_32( pdata[i] );
+//   v128_bswap32_80( edata, pdata );
    verthash_sha3_512_prehash_72( edata );
 
    do
@@ -127,7 +129,7 @@ bool register_verthash_algo( algo_gate_t* gate )
 {
   opt_target_factor = 256.0;
   gate->scanhash  = (void*)&scanhash_verthash;
-  gate->optimizations = SSE42_OPT | AVX2_OPT;
+  gate->optimizations = SSE42_OPT | AVX2_OPT | NEON_OPT;
    
   const char *verthash_data_file = opt_data_file ? opt_data_file
                                                  : default_verthash_data_file;

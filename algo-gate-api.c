@@ -109,7 +109,7 @@ int scanhash_generic( struct work *work, uint32_t max_nonce,
    const int thr_id = mythr->id;
    const bool bench = opt_benchmark;
 
-   mm128_bswap32_80( edata, pdata );
+   v128_bswap32_80( edata, pdata );
    do
    {
       edata[19] = n;
@@ -248,7 +248,7 @@ int null_hash()
    return 0;
 };
 
-void init_algo_gate( algo_gate_t* gate )
+static void init_algo_gate( algo_gate_t* gate )
 {
    gate->miner_thread_init       = (void*)&return_true;
    gate->scanhash                = (void*)&scanhash_generic;
@@ -295,7 +295,6 @@ bool register_algo_gate( int algo, algo_gate_t *gate )
   {
     case ALGO_ALLIUM:       rc = register_allium_algo        ( gate ); break;
     case ALGO_ANIME:        rc = register_anime_algo         ( gate ); break;
-    case ALGO_ARGON2:       rc = register_argon2_algo        ( gate ); break;
     case ALGO_ARGON2D250:   rc = register_argon2d_crds_algo  ( gate ); break;
     case ALGO_ARGON2D500:   rc = register_argon2d_dyn_algo   ( gate ); break;
     case ALGO_ARGON2D4096:  rc = register_argon2d4096_algo   ( gate ); break;
@@ -311,7 +310,6 @@ bool register_algo_gate( int algo, algo_gate_t *gate )
     case ALGO_GROESTL:      rc = register_groestl_algo       ( gate ); break;
     case ALGO_HEX:          rc = register_hex_algo           ( gate ); break;
     case ALGO_HMQ1725:      rc = register_hmq1725_algo       ( gate ); break;
-    case ALGO_HODL:         rc = register_hodl_algo          ( gate ); break;
     case ALGO_JHA:          rc = register_jha_algo           ( gate ); break;
     case ALGO_KECCAK:       rc = register_keccak_algo        ( gate ); break;
     case ALGO_KECCAKC:      rc = register_keccakc_algo       ( gate ); break;
@@ -370,6 +368,7 @@ bool register_algo_gate( int algo, algo_gate_t *gate )
     case ALGO_X16RT_VEIL:   rc = register_x16rt_veil_algo    ( gate ); break;
     case ALGO_X16S:         rc = register_x16s_algo          ( gate ); break;
     case ALGO_X17:          rc = register_x17_algo           ( gate ); break;
+    case ALGO_X20R:         rc = register_x20r_algo          ( gate ); break;
     case ALGO_X21S:         rc = register_x21s_algo          ( gate ); break;
     case ALGO_X22I:         rc = register_x22i_algo          ( gate ); break;
     case ALGO_X25X:         rc = register_x25x_algo          ( gate ); break;

@@ -12,10 +12,13 @@
 #include "algo/keccak/sph_keccak.h"
 #include "algo/skein/sph_skein.h"
 #include "algo/shavite/sph_shavite.h"
-#include "algo/luffa/luffa_for_sse2.h"
 #include "algo/cubehash/cubehash_sse2.h"
-#include "algo/simd/nist.h"
-
+#if defined(__aarch64__)
+  #include "algo/simd/sph_simd.h"
+#else
+  #include "algo/simd/nist.h"
+#endif
+#include "algo/luffa/luffa_for_sse2.h"
 #if defined(__AES__)
   #include "algo/echo/aes_ni/hash_api.h"
   #include "algo/groestl/aes_ni/hash-groestl.h"
@@ -40,7 +43,11 @@ typedef struct {
    hashState_luffa         luffa;
    cubehashParam           cube;
    sph_shavite512_context  shavite;
+#if defined(__aarch64__)
+   sph_simd512_context     simd;
+#else
    hashState_sd            simd;
+#endif
 } c11_ctx_holder;
 
 c11_ctx_holder c11_ctx __attribute__ ((aligned (64)));
@@ -62,7 +69,11 @@ void init_c11_ctx()
    init_luffa( &c11_ctx.luffa, 512 );
    cubehashInit( &c11_ctx.cube, 512, 16, 32 );
    sph_shavite512_init( &c11_ctx.shavite );
+#if defined(__aarch64__)
+   sph_simd512_init( &c11_ctx.simd );
+#else
    init_sd( &c11_ctx.simd, 512 );
+#endif
 }
 
 void c11_hash( void *output, const void *input )
@@ -94,17 +105,20 @@ void c11_hash( void *output, const void *input )
     sph_skein512( &ctx.skein, (const void*) hash, 64 );
     sph_skein512_close( &ctx.skein, hash );
 
-     update_and_final_luffa( &ctx.luffa, (BitSequence*)hash,
-                             (const BitSequence*)hash, 64 );
+     update_and_final_luffa( &ctx.luffa, hash, hash, 64 );
 
-     cubehashUpdateDigest( &ctx.cube, (byte*)hash,
-                           (const byte*)hash, 64 );
+     cubehashUpdateDigest( &ctx.cube, hash, hash, 64 );
 
      sph_shavite512( &ctx.shavite, hash, 64);
      sph_shavite512_close( &ctx.shavite, hash);
 
-     update_final_sd( &ctx.simd, (BitSequence *)hash,
-                      (const BitSequence *)hash, 512 );
+#if defined(__aarch64__)
+    sph_simd512(&ctx.simd, (const void*) hash, 64);
+    sph_simd512_close(&ctx.simd, hash);
+#else
+    update_final_sd( &ctx.simd, (BitSequence *)hash,
+                                   (const BitSequence *)hash, 512 );
+#endif
 
 #if defined(__AES__)
      update_final_echo ( &ctx.echo, (BitSequence *)hash,

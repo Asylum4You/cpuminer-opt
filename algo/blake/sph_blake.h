@@ -42,7 +42,7 @@ extern "C"{
 #endif
 
 #include <stddef.h>
-#include "algo/sha/sph_types.h"
+#include "compat/sph_types.h"
 
 /**
  * Output size (in bits) for BLAKE-224.
@@ -82,9 +82,9 @@ typedef struct {
 #ifndef DOXYGEN_IGNORE
 	unsigned char buf[64];    /* first field, for alignment */
 	size_t ptr;
-	sph_u32 H[8];
-	sph_u32 S[4];
-	sph_u32 T0, T1;
+	uint32_t H[8];
+	uint32_t S[4];
+	uint32_t T0, T1;
 #endif
 } sph_blake_small_context;
 

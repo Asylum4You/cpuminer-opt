@@ -4,14 +4,20 @@
 #include "nist.h"
 #include "vector.h"
 
+
+//#if defined(__SSE2__) || defined(__ARM_NEON)
+#if defined(__SSE2__)
+
 #define PRINT_SOME 0
 
+/*
 int SupportedLength(int hashbitlen) {
   if (hashbitlen <= 0 || hashbitlen > 512)
     return 0;
   else
     return 1;
 }
+*/
 
 int RequiredAlignment(void) {
   return 16;
@@ -938,3 +944,5 @@ void fft128_natural(fft_t *x, unsigned char *a) {
     x[2*i+1] = y[i+64];
   }
 }
+
+#endif // SSE2

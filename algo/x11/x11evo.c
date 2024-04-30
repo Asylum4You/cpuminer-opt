@@ -19,9 +19,13 @@
   #include "algo/groestl/sph_groestl.h"
   #include "algo/echo/sph_echo.h"
 #endif
-#include "algo/luffa/luffa_for_sse2.h"
 #include "algo/cubehash/cubehash_sse2.h"
-#include "algo/simd/nist.h"
+#if defined(__aarch64__)
+  #include "algo/simd/sph_simd.h"
+#else
+  #include "algo/simd/nist.h"
+#endif
+#include "algo/luffa/luffa_for_sse2.h"
 
 typedef struct {
 #ifdef __AES__
@@ -33,7 +37,11 @@ typedef struct {
 #endif
     hashState_luffa         luffa;
     cubehashParam           cube;
-    hashState_sd            simd;
+#if defined(__aarch64__)
+   sph_simd512_context     simd;
+#else
+   hashState_sd            simd;
+#endif
     sph_blake512_context    blake;
     sph_bmw512_context      bmw;
     sph_skein512_context    skein;
@@ -55,7 +63,11 @@ void init_x11evo_ctx()
 #endif
      init_luffa( &x11evo_ctx.luffa, 512 );
      cubehashInit( &x11evo_ctx.cube, 512, 16, 32 );
+#if defined(__aarch64__)
+     sph_simd512_init( &x11evo_ctx.simd );
+#else
      init_sd( &x11evo_ctx.simd, 512 );
+#endif
      sph_blake512_init( &x11evo_ctx.blake );
      sph_bmw512_init( &x11evo_ctx.bmw );
      sph_skein512_init( &x11evo_ctx.skein );
@@ -124,20 +136,23 @@ void x11evo_hash( void *state, const void *input )
 	      sph_keccak512_close( &ctx.keccak, (char*)hash );
 	      break;
 	    case 6:
-              update_and_final_luffa( &ctx.luffa, (char*)hash,
-                                      (const char*)hash, 64 );
-	      break;
+         update_and_final_luffa( &ctx.luffa, hash, hash, 64 );
+         break;
 	    case 7:
-              cubehashUpdateDigest( &ctx.cube, (char*)hash, 
-                                    (const char*)hash, 64 );
+         cubehashUpdateDigest( &ctx.cube, hash, hash, 64 );
 	      break;
 	    case 8:
 	      sph_shavite512( &ctx.shavite, (char*)hash, size );
 	      sph_shavite512_close( &ctx.shavite, (char*)hash );
 	      break;
 	    case 9:
-              update_final_sd( &ctx.simd, (char*)hash, (const char*)hash, 512 );
-	      break;
+#if defined(__aarch64__)
+         sph_simd512(&ctx.simd, (const void*) hash, 64);
+         sph_simd512_close(&ctx.simd, hash);
+#else
+         update_final_sd( &ctx.simd, (char*)hash, (const char*)hash, 512 );
+#endif
+    break;
 	    case 10:
 #ifdef __AES__
          update_final_echo( &ctx.echo, (char*)hash,

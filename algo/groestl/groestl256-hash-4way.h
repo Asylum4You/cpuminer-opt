@@ -10,7 +10,6 @@
 #define GROESTL256_HASH_4WAY_H__ 1
 
 #include "simd-utils.h"
-#include <immintrin.h>
 #include <stdint.h>
 #include <stdio.h>
 #if defined(_WIN64) || defined(__WINDOWS__)
@@ -21,10 +20,6 @@
 #if defined(__AVX2__) && defined(__VAES__)
 
 #define LENGTH (256)
-
-//#include "brg_endian.h"
-//#define NEED_UINT_64T
-//#include "algo/sha/brg_types.h"
 
 /* some sizes (number of bytes) */
 #define ROWS (8)

@@ -27,11 +27,21 @@ See INSTALL_LINUX or INSTALL_WINDOWS for compile instructions
 Requirements
 ------------
 
-Intel Core2 or newer, or AMD Steamroller or newer CPU. ARM CPUs are not
-supported.
+- A x86_64 architecture CPU with a minimum of SSE2 support. This includes Intel Core2 and newer and AMD equivalents.
+- Arm CPU supporting AArch64 and NEON.
 
-64 bit Linux or Windows operating system. Apple, Android and Raspberry Pi
-are not supported. FreeBSD YMMV.
+32 bit CPUs are not supported.
+
+Older CPUs are supported by open source cpuminer-multi by TPruvot but at reduced performance.
+
+Mining on mobile devices that meet the requirements is not recommended due to the risk of
+overheating and damaging the battery. Mining has unlimited demand, it will push any device
+to or beyond its limits. There is also a fire risk with overheated lithium batteries.
+
+Beware of apps claiming "mobile only mining". There is no such thing, they aren't miners.
+If a mobile CPU can mine it any CPU can.
+
+See wiki for details.
 
 Reporting bugs
 --------------
@@ -64,6 +74,122 @@ If not what makes it happen or not happen?
 
 Change Log
 ----------
+
+v24.1
+
+#414: fix bug in merkle error handling.
+#416: change $nproc to $(nproc) in build scripts.
+#420: change some inline function definitions to static inline. 
+#413: Fix formatting error for share result log when using no-color.
+Faster 2 way interleaving.
+Cleanup sha256 architecture targetting.
+
+v23.15
+
+Fixed x11gost (sib) algo for all architectures, broken in v3.23.4.
+ARM: Fugue AES optimizations enabled.
+ARM: quark, qubit, x11gost algos optimized with NEON & AES.
+
+v23.14
+
+ARM: Groestl AES optimizations enabled.
+All: Small optimization to Shabal 4way.
+x86_64: Extend Shabal 4way support to SSE2 from SSE4.1.
+All: deleted some unused files.
+
+v23.13
+
+Added x20r algo.
+Eliminated redundant hash order calculations for x16r family.
+
+v23.12
+
+Several bugs fixes and speed improvements for x16r family for all CPU architectures.
+
+v23.11
+
+This is a release candidate for full AArch64 support, marking the end of the Beta phase.
+Fixed hmq1725 & x25x algos, SSE2 & NEON, broken in v3.23.4.
+Most CPU-mineable SHA3 algos (X*) upgraded to 2-way SSE2 & NEON.
+
+v23.10
+
+x86_64: Fixed scrypt, scryptn2 algos SSE2. 
+Fixed sha512256d algo AVX2, SSE2, NEON.
+Fixed a bug in Skein N-way that reduced performance.
+ARM: Skein optimized for NEON, SHA2 & SSE2.
+Skein2 algo 2-way optimized for NEON & SSE2.
+
+v23.9
+
+x86_64: fixed minotaurx crash, broken in 23.7.
+ARM: #407 fix compile error due to incorrect type casting for vrev instruction argument.
+
+v23.8
+
+Cpuminer-opt is no longer dependant on OpenSSL.
+Removed Hodl algo.
+Removed legacy Sha256 & Scrypt ASM code.
+ARM: Echo AES is working and enabled for x17.
+
+v23.7
+
+Fixed blakes2s, broken in v3.23.4.
+ARM: SHA2 extension tested and working.
+ARM: sha512256d fully optimized.
+ARM: X17 more optimizations.
+ARM: AES extension working for Shavite.
+ARM errata: CPU features AES & SHA256 are not reported when available.
+
+v23.6
+
+ARM: Sha256dt, Sha256t, Sha256d 4-way now working and fully optimized for NEON, SHA also enabled but untested.
+x86: Sha256dt, Sha256t, Sha256d faster SSE2 4-way.
+ARM: Scrypt, Scryptn2 fully optimized for NEON, SHA also enabled but untested.
+Linux: added a log when miner is started as root to discourage doing so.
+
+v23.5
+
+New version numbering drops the leading 3, the major version will now be the calendar year, the minor version identifies planned releases during the year.
+
+BETA: 64 bit ARM support
+- ARM 64 bit CPUs are now supported with source code for Linux. Windows is not supported.
+- NEON, AES & SHA2 are supported.
+- This the first public release and is early Beta quality.
+- Some algorithms do not work on ARM or work at reduced performance.
+See wiki for details: https://github.com/JayDDee/cpuminer-opt/wiki/Support-for-AArch64.
+
+- CPU archtecture and OS detection and logging now support ARM features.
+- New 2way parallel hash for ARM also helps x86_64 CPUs without AVX2 on supported algorithms.
+- Enhanced startup feature logs to support ARM.
+- Removed startup logs for incompatible CPU/SW architectures.
+- Added CPU architecture & OS type to RPC user agent string.
+- Added share reject controls, a warning log is displayed at 10% reject rate, the miner exits with an error log at 50%.
+- Removed argon2 algorithm.
+- New CLI option "--bell" adds an ASCII bell code in the output string of error, warning, & rejected share logs. The option is disabled by default.
+
+v3.23.4
+
+Source code only. 
+
+Initial experimental support for ARM AArch64 with NEON, SHA2 & AES.
+Arm support is considered alpha quality, use at your own risk.
+x86_64 is unaffected.
+
+v3.23.3
+
+#402: Windows binaries package rebuilt with openssl v1.1.1w (libcrypto-1_1-x64.dll).
+
+#400: Removed excessive thread restarts when mining solo.
+Fixed build_msys2.sh for gcc-13 by removing unsupported option "--param=evrp-mode=legacy" from CFLAGS.
+Added CPUID detection and reporting of CPUs and SW builds supporting SHA512 extension.
+Added prototype of sha-512 using SHA512 intrinsics, untested.
+Other improvements and code cleanup.
+
+v3.23.2
+
+sha256dt, sha256t & sha256d +10% with SHA, small improvement with AVX2.
+Other small improvements and code cleanup.
 
 v3.23.1
 

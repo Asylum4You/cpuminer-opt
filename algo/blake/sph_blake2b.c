@@ -31,7 +31,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "simd-utils.h"
-#include "algo/sha/sph_types.h"
+#include "compat/sph_types.h"
 #include "sph_blake2b.h"
 
 // Little-endian byte access.
@@ -52,14 +52,14 @@
   V[0] = _mm256_add_epi64( V[0], _mm256_add_epi64( V[1], \
               _mm256_set_epi64x( m[ sigmaR[ Sg ] ], m[ sigmaR[ Se ] ], \
                                  m[ sigmaR[ Sc ] ], m[ sigmaR[ Sa ] ] ) ) ); \
-  V[3] = mm256_swap64_32( _mm256_xor_si256( V[3], V[0] ) ); \
+  V[3] = mm256_ror_64( _mm256_xor_si256( V[3], V[0] ), 32 ); \
   V[2] = _mm256_add_epi64( V[2], V[3] ); \
-  V[1] = mm256_shuflr64_24( _mm256_xor_si256( V[1], V[2] ) ); \
+  V[1] = mm256_ror_64( _mm256_xor_si256( V[1], V[2] ), 24 ); \
 \
   V[0] = _mm256_add_epi64( V[0], _mm256_add_epi64( V[1], \
               _mm256_set_epi64x( m[ sigmaR[ Sh ] ], m[ sigmaR[ Sf ] ], \
                                  m[ sigmaR[ Sd ] ], m[ sigmaR[ Sb ] ] ) ) ); \
-  V[3] = mm256_shuflr64_16( _mm256_xor_si256( V[3], V[0] ) ); \
+  V[3] = mm256_ror_64( _mm256_xor_si256( V[3], V[0] ), 16 ); \
   V[2] = _mm256_add_epi64( V[2], V[3] ); \
   V[1] = mm256_ror_64( _mm256_xor_si256( V[1], V[2] ), 63 ); \
 }
@@ -95,45 +95,43 @@
 }
 */
 
-#elif defined(__SSE2__)
-// always true
+#elif defined(__SSE2__) || defined(__ARM_NEON)
 
 #define BLAKE2B_G( Va, Vb, Vc, Vd, Sa, Sb, Sc, Sd ) \
 { \
-   Va = _mm_add_epi64( Va, _mm_add_epi64( Vb, \
-                 _mm_set_epi64x( m[ sigmaR[ Sc ] ], m[ sigmaR[ Sa ] ] ) ) ); \
-   Vd = mm128_swap64_32( _mm_xor_si128( Vd, Va ) ); \
-   Vc = _mm_add_epi64( Vc, Vd ); \
-   Vb = mm128_shuflr64_24( _mm_xor_si128( Vb, Vc ) ); \
+   Va = v128_add64( Va, v128_add64( Vb, \
+                 v128_set64( m[ sigmaR[ Sc ] ], m[ sigmaR[ Sa ] ] ) ) ); \
+   Vd = v128_ror64( v128_xor( Vd, Va ), 32 ); \
+   Vc = v128_add64( Vc, Vd ); \
+   Vb = v128_ror64( v128_xor( Vb, Vc ), 24 ); \
 \
-   Va = _mm_add_epi64( Va, _mm_add_epi64( Vb, \
-                 _mm_set_epi64x( m[ sigmaR[ Sd ] ], m[ sigmaR[ Sb ] ] ) ) ); \
-   Vd = mm128_shuflr64_16( _mm_xor_si128( Vd, Va ) ); \
-   Vc = _mm_add_epi64( Vc, Vd ); \
-   Vb = mm128_ror_64( _mm_xor_si128( Vb, Vc ), 63 ); \
+   Va = v128_add64( Va, v128_add64( Vb, \
+                 v128_set64( m[ sigmaR[ Sd ] ], m[ sigmaR[ Sb ] ] ) ) ); \
+   Vd = v128_ror64( v128_xor( Vd, Va ), 16 ); \
+   Vc = v128_add64( Vc, Vd ); \
+   Vb = v128_ror64( v128_xor( Vb, Vc ), 63 ); \
 }
 
 #define BLAKE2B_ROUND( R ) \
 { \
-   __m128i *V = (__m128i*)v; \
-   __m128i V2, V3, V6, V7; \
+   v128_t *V = (v128_t*)v; \
+   v128_t V2, V3, V6, V7; \
    const uint8_t *sigmaR = sigma[R]; \
    BLAKE2B_G( V[0], V[2], V[4], V[6], 0, 1, 2, 3 ); \
    BLAKE2B_G( V[1], V[3], V[5], V[7], 4, 5, 6, 7 ); \
-   V2 = mm128_alignr_64( V[3], V[2], 1 ); \
-   V3 = mm128_alignr_64( V[2], V[3], 1 ); \
-   V6 = mm128_alignr_64( V[6], V[7], 1 ); \
-   V7 = mm128_alignr_64( V[7], V[6], 1 ); \
+   V2 = v128_alignr64( V[3], V[2], 1 ); \
+   V3 = v128_alignr64( V[2], V[3], 1 ); \
+   V6 = v128_alignr64( V[6], V[7], 1 ); \
+   V7 = v128_alignr64( V[7], V[6], 1 ); \
    BLAKE2B_G( V[0], V2, V[5], V6,  8,  9, 10, 11 ); \
    BLAKE2B_G( V[1], V3, V[4], V7, 12, 13, 14, 15 ); \
-   V[2] = mm128_alignr_64( V2, V3, 1 ); \
-   V[3] = mm128_alignr_64( V3, V2, 1 ); \
-   V[6] = mm128_alignr_64( V7, V6, 1 ); \
-   V[7] = mm128_alignr_64( V6, V7, 1 ); \
+   V[2] = v128_alignr64( V2, V3, 1 ); \
+   V[3] = v128_alignr64( V3, V2, 1 ); \
+   V[6] = v128_alignr64( V7, V6, 1 ); \
+   V[7] = v128_alignr64( V6, V7, 1 ); \
 }
 
 #else
-// never used, SSE2 is always available
 
 #ifndef ROTR64
 #define ROTR64(x, y)  (((x) >> (y)) ^ ((x) << (64 - (y))))

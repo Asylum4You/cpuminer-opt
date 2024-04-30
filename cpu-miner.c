@@ -36,7 +36,7 @@
 #include <memory.h>
 #include <curl/curl.h>
 #include <jansson.h>
-#include <openssl/sha.h>
+//#include <openssl/sha.h>
 //#include <mm_malloc.h>
 #include "sysinfos.c"
 #include "algo/sha/sha256d.h"
@@ -70,6 +70,7 @@
 
 #include "miner.h"
 #include "algo-gate-api.h"
+#include "algo/sha/sha256-hash.h"
 
 #ifdef WIN32
 #include "compat/winansi.h"
@@ -172,9 +173,11 @@ double net_diff = 0.;
 double net_hashrate = 0.;
 uint64_t net_blocks = 0;
 uint32_t opt_work_size = 0;
+bool     opt_bell = false;
 
 // conditional mining
-bool conditional_state[MAX_CPUS] = { 0 };
+bool *conditional_state = NULL;
+//bool conditional_state[MAX_CPUS] = { 0 };
 double opt_max_temp = 0.0;
 double opt_max_diff = 0.0;
 double opt_max_rate = 0.0;
@@ -880,8 +883,8 @@ static bool gbt_work_decode( const json_t *val, struct work *work )
    }
 
    // reverse the bytes in target
-   casti_m128i( work->target, 0 ) = mm128_bswap_128( casti_m128i( target, 1 ) );
-   casti_m128i( work->target, 1 ) = mm128_bswap_128( casti_m128i( target, 0 ) );
+   casti_v128( work->target, 0 ) = v128_bswap128( casti_v128( target, 1 ) );
+   casti_v128( work->target, 1 ) = v128_bswap128( casti_v128( target, 0 ) );
    net_diff = work->targetdiff = hash_to_diff( work->target );
 
    tmp = json_object_get( val, "workid" );
@@ -954,10 +957,10 @@ static inline void sprintf_et( char *str, long unsigned int seconds )
       sprintf( str, "%lum%02lus", min, sec );
 }
 
-const long double exp32 = EXP32;                                  // 2**32
-const long double exp48 = EXP32 * EXP16;                          // 2**48
-const long double exp64 = EXP32 * EXP32;                          // 2**64
-const long double exp96 = EXP32 * EXP32 * EXP32;                  // 2**96
+const long double exp32  = EXP32;                                 // 2**32
+const long double exp48  = EXP32 * EXP16;                         // 2**48
+const long double exp64  = EXP32 * EXP32;                         // 2**64
+const long double exp96  = EXP32 * EXP32 * EXP32;                 // 2**96
 const long double exp128 = EXP32 * EXP32 * EXP32 * EXP32;         // 2**128
 const long double exp160 = EXP32 * EXP32 * EXP32 * EXP32 * EXP16; // 2**160
 
@@ -986,6 +989,17 @@ static inline int stats_ptr_incr( int p )
 void report_summary_log( bool force )
 {
    struct timeval now, et, uptime, start_time;
+
+  if ( rejected_share_count > 10 )
+  {
+     if ( rejected_share_count > ( submitted_share_count * .5 ) )
+     {
+        applog(LOG_ERR,"Excessive rejected share rate, exiting...");
+        exit(1);
+     } 
+     else if ( rejected_share_count > ( submitted_share_count * .1 ) )
+       applog(LOG_WARNING,"High rejected share rate, check settings.");
+   }
 
    gettimeofday( &now, NULL );
    timeval_subtract( &et, &now, &five_min_start );
@@ -1277,56 +1291,15 @@ static int share_result( int result, struct work *work,
      else              rcol = CL_LRD;
    }
 
-   applog( LOG_INFO, "%d %s%s %s%s %s%s %s%s%s, %.3f sec (%dms)",
-           my_stats.share_count, acol, ares, scol, sres, rcol, rres, bcol,
-           bres, CL_N, share_time, latency );
-
-/*   
-   if ( unlikely( opt_debug || !result || solved ) )
-   {
-      if ( have_stratum )
-         applog2( LOG_INFO, "Diff %.5g, Block %d, Job %s",
-               my_stats.share_diff, my_stats.height, my_stats.job_id );
-      else
-         applog2( LOG_INFO, "Diff %.5g, Block %d",
-               my_stats.share_diff, work ? work->height : last_block_height );
-   }
-*/
-
+   const char *bell = !result && opt_bell ? &ASCII_BELL : "";
+   applog( LOG_INFO, "%s%d %s%s %s%s %s%s %s%s%s, %.3f sec (%dms)",
+           bell, my_stats.share_count, acol, ares, scol, sres, rcol, rres,
+           bcol, bres, use_colors ? CL_N : "", share_time, latency );
    if ( unlikely( !( opt_quiet || result || stale ) ) )
    {
-//      uint32_t str[8];
-//      uint32_t *targ;
-
-      if ( reason ) applog2( LOG_MINR, "Reject reason: %s", reason );
-      {
-         // The exact hash is not avaiable here, it's just an imprecise
-         // approximation calculated from the share difficulty. It's useless
-         // for anything other than low diff rejects. Until and unless a
-         // solution is implemented to make the hash and targets avaiable
-         // don't bother displaying them. In the meantime display the diff for
-         // low diff rejects.
-
-         if ( strstr( reason, "difficulty" ) )
-            applog2( LOG_MINR, "Share diff: %.5g, Target: %.5g",
-                               my_stats.share_diff, my_stats.target_diff );
-
-/*
-      diff_to_hash( str, my_stats.share_diff );
-      applog2( LOG_INFO, "Hash:   %08x%08x%08x%08x%08x%08x", str[7], str[6],
-               str[5], str[4], str[3],str[2], str[1], str[0] );
-
-      if ( work )
-         targ = work->target;
-      else
-      {
-         diff_to_hash( str, my_stats.target_diff );
-         targ = &str[0];
-      }
-      applog2( LOG_INFO, "Target: %08x%08x%08x%08x%08x%08x", targ[7], targ[6],
-               targ[5], targ[4], targ[3], targ[2], targ[1], targ[0] );
-*/
-      }
+      applog2( LOG_INFO, "%sReject reason: %s", bell, reason ? reason : "" );
+      applog2( LOG_INFO, "Share diff: %.5g, Target: %.5g",
+                        my_stats.share_diff, my_stats.target_diff );
    }
    return 1;
 }
@@ -1628,39 +1601,43 @@ start:
       else
         new_work = false;
 
-      if ( new_work && !opt_quiet )
+      if ( new_work )
       {
-         double miner_hr = 0.;
-         double net_hr = net_hashrate;
-         double nd = net_diff * exp32;
-         char net_hr_units[4] = {0};
-         char miner_hr_units[4] = {0};
-         char net_ttf[32];
-         char miner_ttf[32];
+         if ( !opt_quiet )
+         {
+            double miner_hr = 0.;
+            double net_hr = net_hashrate;
+            double nd = net_diff * exp32;
+            char net_hr_units[4] = {0};
+            char miner_hr_units[4] = {0};
+            char net_ttf[32];
+            char miner_ttf[32];
 
-         pthread_mutex_lock( &stats_lock );
+            pthread_mutex_lock( &stats_lock );
 
-         for ( int i = 0; i < opt_n_threads; i++ )
-             miner_hr += thr_hashrates[i];
-         global_hashrate = miner_hr;
+            for ( int i = 0; i < opt_n_threads; i++ )
+               miner_hr += thr_hashrates[i];
+            global_hashrate = miner_hr;
 
-         pthread_mutex_unlock( &stats_lock );
+            pthread_mutex_unlock( &stats_lock );
 
-         if ( net_hr > 0. )
-            sprintf_et( net_ttf, nd / net_hr );
-         else
-            sprintf( net_ttf, "NA" );
-         if ( miner_hr > 0. )
-            sprintf_et( miner_ttf, nd / miner_hr );
-         else
-            sprintf( miner_ttf, "NA" );
+            if ( net_hr > 0. )
+               sprintf_et( net_ttf, nd / net_hr );
+            else
+               sprintf( net_ttf, "NA" );
+            if ( miner_hr > 0. )
+               sprintf_et( miner_ttf, nd / miner_hr );
+            else
+               sprintf( miner_ttf, "NA" );
 
-         scale_hash_for_display ( &miner_hr, miner_hr_units );
-         scale_hash_for_display ( &net_hr, net_hr_units );
-         applog2( LOG_INFO,
+            scale_hash_for_display ( &miner_hr, miner_hr_units );
+            scale_hash_for_display ( &net_hr, net_hr_units );
+            applog2( LOG_INFO,
                   "Miner TTF @ %.2f %sh/s %s, Net TTF @ %.2f %sh/s %s",
                   miner_hr, miner_hr_units, miner_ttf, net_hr,
                   net_hr_units, net_ttf );
+         }
+         restart_threads();
       }
    }  // rc
 
@@ -1914,10 +1891,14 @@ bool submit_solution( struct work *work, const void *hash,
            uint32_t* t = (uint32_t*)work->target;
            uint32_t* d = (uint32_t*)work->data;
 
-           applog( LOG_INFO, "Data[ 0: 9]: %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x", d[0],d[1],d[2],d[3],d[4],d[5],d[6],d[7],d[8],d[9] );
-           applog( LOG_INFO, "Data[10:19]: %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x", d[10],d[11],d[12],d[13],d[14],d[15],d[16],d[17],d[18],d[19] );
-           applog( LOG_INFO, "Hash[ 7: 0]: %08x %08x %08x %08x %08x %08x %08x %08x", h[7],h[6],h[5],h[4],h[3],h[2],h[1],h[0] );
-           applog( LOG_INFO, "Targ[ 7: 0]: %08x %08x %08x %08x %08x %08x %08x %08x", t[7],t[6],t[5],t[4],t[3],t[2],t[1],t[0] );
+           applog( LOG_INFO, "Data[ 0: 9]: %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x",
+                                                 d[0],d[1],d[2],d[3],d[4],d[5],d[6],d[7],d[8],d[9] );
+           applog( LOG_INFO, "Data[10:19]: %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x",
+                                        d[10],d[11],d[12],d[13],d[14],d[15],d[16],d[17],d[18],d[19] );
+           applog( LOG_INFO, "Hash[ 7: 0]: %08x %08x %08x %08x %08x %08x %08x %08x",
+                                                            h[7],h[6],h[5],h[4],h[3],h[2],h[1],h[0] );
+           applog( LOG_INFO, "Targ[ 7: 0]: %08x %08x %08x %08x %08x %08x %08x %08x",
+                                                            t[7],t[6],t[5],t[4],t[3],t[2],t[1],t[0] );
         }
      }
      return true;
@@ -1980,16 +1961,6 @@ void sha256d_gen_merkle_root( char* merkle_root, struct stratum_ctx* sctx )
 void sha256_gen_merkle_root( char* merkle_root, struct stratum_ctx* sctx )
 {
   sha256_full( merkle_root, sctx->job.coinbase, (int)sctx->job.coinbase_size );
-  for ( int i = 0; i < sctx->job.merkle_count; i++ )
-  {
-     memcpy( merkle_root + 32, sctx->job.merkle[i], 32 );
-     sha256d( merkle_root, merkle_root, 64 );
-  }
-}
-// OpenSSL single sha256, deprecated
-void SHA256_gen_merkle_root( char* merkle_root, struct stratum_ctx* sctx )
-{
-  SHA256( sctx->job.coinbase, (int)sctx->job.coinbase_size, merkle_root );
   for ( int i = 0; i < sctx->job.merkle_count; i++ )
   {
      memcpy( merkle_root + 32, sctx->job.merkle[i], 32 );
@@ -2229,8 +2200,8 @@ static void *miner_thread( void *userdata )
 //       int64_t max64 = 1000;
        int nonce_found = 0;
 
-       if ( likely( algo_gate.do_this_thread( thr_id ) ) )
-       {
+//       if ( likely( algo_gate.do_this_thread( thr_id ) ) )
+//       {
           if ( have_stratum ) 
           {
              while ( unlikely( stratum_down ) )
@@ -2266,7 +2237,7 @@ static void *miner_thread( void *userdata )
 		             goto out;
 	             }
                 g_work_time = time(NULL);
-                restart_threads();
+//                restart_threads();
              }
 
              pthread_rwlock_unlock( &g_work_lock );
@@ -2279,8 +2250,8 @@ static void *miner_thread( void *userdata )
 
           pthread_rwlock_unlock( &g_work_lock );
 
-       } // do_this_thread
-       algo_gate.resync_threads( thr_id, &work );
+//       } // do_this_thread
+//       algo_gate.resync_threads( thr_id, &work );
 
        // conditional mining
        if ( unlikely( !wanna_mine( thr_id ) ) )
@@ -2338,6 +2309,12 @@ static void *miner_thread( void *userdata )
        gettimeofday( (struct timeval *) &tv_start, NULL );
 
        // Scan for nonce
+//       nonce_found = scanhash_sha256dt_ref( &work, max_nonce, &hashes_done,
+//                                         mythr );
+//       nonce_found = scanhash_sha256dt_4x32( &work, max_nonce, &hashes_done,
+//                                         mythr );
+
+
        nonce_found = algo_gate.scanhash( &work, max_nonce, &hashes_done,
                                          mythr );
 
@@ -2859,50 +2836,82 @@ static void show_credits()
 
 #define check_cpu_capability() cpu_capability( false )
 #define display_cpu_capability() cpu_capability( true )
+
 static bool cpu_capability( bool display_only )
 {
      char cpu_brand[0x40];
-     bool cpu_has_sse2   = has_sse2();
-     bool cpu_has_aes    = has_aes_ni();
-     bool cpu_has_sse42  = has_sse42();
-     bool cpu_has_avx    = has_avx();
-     bool cpu_has_avx2   = has_avx2();
-     bool cpu_has_sha    = has_sha();
-     bool cpu_has_avx512 = has_avx512();
-     bool cpu_has_vaes   = has_vaes();
-     bool cpu_has_avx10  = has_avx10();
-     bool sw_has_aes    = false;
-     bool sw_has_sse2   = false;
-     bool sw_has_sse42  = false;
-     bool sw_has_avx    = false;
-     bool sw_has_avx2   = false;
-     bool sw_has_avx512 = false;
-     bool sw_has_sha    = false;
-     bool sw_has_vaes   = false;
+     bool cpu_has_aarch64 = cpu_arch_aarch64();
+     bool cpu_has_x86_64  = cpu_arch_x86_64();
+     bool cpu_has_sse2    = has_sse2();    // X86_64 only
+     bool cpu_has_ssse3   = has_ssse3();    // X86_64 only
+     bool cpu_has_sse41   = has_sse41();    // X86_64 only
+     bool cpu_has_sse42   = has_sse42();
+     bool cpu_has_avx     = has_avx();
+     bool cpu_has_avx2    = has_avx2();
+     bool cpu_has_avx512  = has_avx512();
+     bool cpu_has_avx10   = has_avx10();
+     bool cpu_has_aes     = has_aes_ni();  // x86_64 or AArch64 AES
+     bool cpu_has_vaes    = has_vaes();
+     bool cpu_has_sha     = has_sha();     // x86_64 or AArch64
+     bool cpu_has_sha512  = has_sha512();
+     bool sw_has_x86_64   = false;
+     bool sw_has_aarch64  = false;
+     int  sw_arm_arch     = 0;
+     bool sw_has_neon     = false;
+     bool sw_has_sse2     = false;        // x86_64
+     bool sw_has_ssse3    = false;        // x86_64
+     bool sw_has_sse41    = false;        // x86_64
+     bool sw_has_sse42    = false;
+     bool sw_has_avx      = false;
+     bool sw_has_avx2     = false;
+     bool sw_has_avx512   = false;
+     bool sw_has_aes      = false;
+     bool sw_has_vaes     = false;
+     bool sw_has_sha      = false;        // x86_64 or AArch64 SHA2
+     bool sw_has_sha512   = false;        // x86_64 or AArch64 SHA3
      set_t algo_features = algo_gate.optimizations;
      bool algo_has_sse2    = set_incl( SSE2_OPT,    algo_features );
-     bool algo_has_aes     = set_incl( AES_OPT,     algo_features );
      bool algo_has_sse42   = set_incl( SSE42_OPT,   algo_features );
      bool algo_has_avx     = set_incl( AVX_OPT,     algo_features );
      bool algo_has_avx2    = set_incl( AVX2_OPT,    algo_features );
      bool algo_has_avx512  = set_incl( AVX512_OPT,  algo_features );
-     bool algo_has_sha     = set_incl( SHA_OPT,     algo_features );
+     bool algo_has_aes     = set_incl( AES_OPT,     algo_features );
      bool algo_has_vaes    = set_incl( VAES_OPT,    algo_features );
-     bool use_aes;
+     bool algo_has_sha     = set_incl( SHA_OPT,     algo_features );
+     bool algo_has_sha512  = set_incl( SHA512_OPT,  algo_features );
+     bool algo_has_neon    = set_incl( NEON_OPT,    algo_features );
      bool use_sse2;
      bool use_sse42;
      bool use_avx;
      bool use_avx2;
      bool use_avx512;
-     bool use_sha;
+     bool use_aes;
      bool use_vaes;
+     bool use_sha;
+     bool use_sha512;
+     bool use_neon;
      bool use_none;
 
-     #ifdef __AES__
-       sw_has_aes = true;
+     // x86_64
+     #if defined(__x86_64__)
+         sw_has_x86_64 = true;
+     #elif defined(__aarch64__)
+         sw_has_aarch64 = true;
+         #ifdef __ARM_NEON
+           sw_has_neon = true;
+         #endif
+         #ifdef __ARM_ARCH
+           sw_arm_arch = __ARM_ARCH;
+         #endif
      #endif
-     #ifdef __SSE2__
+     #if defined(__SSE2__)
          sw_has_sse2 = true;
+     #endif
+     #if defined(__SSSE3__)
+         sw_has_ssse3 = true;
+     #endif
+     #if defined(__SSE41__)
+         sw_has_sse41 = true;
      #endif
      #ifdef __SSE4_2__
          sw_has_sse42 = true;
@@ -2916,18 +2925,23 @@ static bool cpu_capability( bool display_only )
      #if (defined(__AVX512F__) && defined(__AVX512DQ__) && defined(__AVX512BW__) && defined(__AVX512VL__))
          sw_has_avx512 = true;
      #endif
-     #ifdef __SHA__
-         sw_has_sha = true;
+     #if defined(__AES__) || defined(__ARM_FEATURE_AES)
+       sw_has_aes = true;
      #endif
      #ifdef __VAES__
          sw_has_vaes = true;
      #endif
+     #if defined(__SHA__) || defined(__ARM_FEATURE_SHA2)
+         sw_has_sha = true;
+     #endif
+     #if defined(__SHA512__) || defined(____ARM_FEATURE_SHA3)
+         sw_has_sha512 = true;
+     #endif
+     #if defined(__ARM_NEON)
+         sw_has_neon = true;
+     #endif
 
-
-//     #if !((__AES__) || (__SSE2__))
-//         printf("Neither __AES__ nor __SSE2__ defined.\n");
-//     #endif
-
+         
      cpu_brand_string( cpu_brand );
      printf( "CPU: %s\n", cpu_brand );
 
@@ -2936,36 +2950,69 @@ static bool cpu_capability( bool display_only )
          " with VC++ 2013\n");
      #elif defined(__GNUC__)
          " with GCC-");
-        printf("%d.%d.%d\n", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+        printf("%d.%d.%d", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+     #else
+        printf("\n");
+     #endif
+
+     #if defined(__linux)
+        printf(" Linux\n");
+     #elif defined(WIN32)
+        printf(" Windows\n");
+     #elif defined(__APPLE__)
+        printf(" MacOS\n");
+#elif defined(__unix__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) 
+        printf(" Unix\n");
      #else
         printf("\n");
      #endif
 
      printf("CPU features: ");
-     if      ( cpu_has_avx512 )    printf( " AVX512" );
-     else if ( cpu_has_avx2   )    printf( " AVX2  " );
-     else if ( cpu_has_avx    )    printf( " AVX   " );
-     else if ( cpu_has_sse42  )    printf( " SSE4.2" );
-     else if ( cpu_has_sse2   )    printf( " SSE2  " );
-     if      ( cpu_has_vaes   )    printf( " VAES"   );
-     else if ( cpu_has_aes    )    printf( "  AES"   );
-     if      ( cpu_has_sha    )    printf( " SHA"    );
-     if      ( cpu_has_avx10  )    printf( " AVX10.%d-%d",
-                                    avx10_version(), avx10_vector_length() );
+     if ( cpu_has_x86_64  )
+     {
+                                    printf( " x86_64"  );
+       if      ( cpu_has_avx512 )   printf( " AVX512"  );
+       else if ( cpu_has_avx2   )   printf( " AVX2  "  );
+       else if ( cpu_has_avx    )   printf( " AVX   "  );
+       else if ( cpu_has_sse42  )   printf( " SSE4.2"  );
+       else if ( cpu_has_sse41  )   printf( " SSE4.1"  );
+       else if ( cpu_has_ssse3  )   printf( " SSSE3 "  );
+       else if ( cpu_has_sse2   )   printf( " SSE2  "  );
+     }
+     else if   ( cpu_has_aarch64 )  printf( " AArch64 NEON" ); // NEON assumed
+     if        ( cpu_has_vaes   )   printf( " VAES"    );
+     else if   ( cpu_has_aes    )   printf( "  AES"    );
+     if        ( cpu_has_sha512 )   printf( " SHA512"  );
+     else if   ( cpu_has_sha    )   printf( " SHA256"  );
+     if        ( cpu_has_avx10  )   printf( " AVX10.%d-%d",
+                                      avx10_version(), avx10_vector_length() );
 
      printf("\nSW features:  ");
-     if      ( sw_has_avx512 )    printf( " AVX512" );
-     else if ( sw_has_avx2   )    printf( " AVX2  " );
-     else if ( sw_has_avx    )    printf( " AVX   " );
-     else if ( sw_has_sse42  )    printf( " SSE4.2" );
-     else if ( sw_has_sse2   )    printf( " SSE2  " );
-     if      ( sw_has_vaes   )    printf( " VAES"   );
-     else if ( sw_has_aes    )    printf( "  AES"   );
-     if      ( sw_has_sha    )    printf( " SHA"    );
+     if ( sw_has_x86_64 )
+     {                     
+                                     printf( " x86_64"  );
+        if      ( sw_has_avx512  )   printf( " AVX512"  );
+        else if ( sw_has_avx2    )   printf( " AVX2  "  );
+        else if ( sw_has_avx     )   printf( " AVX   "  );
+        else if ( sw_has_sse42   )   printf( " SSE4.2"  );
+        else if ( sw_has_sse41   )   printf( " SSE4.1"  );
+        else if ( sw_has_ssse3   )   printf( " SSSE3 "  );
+        else if ( sw_has_sse2    )   printf( " SSE2  "  );
+     }
+     else if    ( sw_has_aarch64 ) 
+     {
+                                     printf( " AArch64" );
+        if      ( sw_arm_arch    )   printf( " armv%d", sw_arm_arch );
+        if      ( sw_has_neon    )   printf( " NEON"    );
+     }
+     if         ( sw_has_vaes    )   printf( " VAES"    );
+     else if    ( sw_has_aes     )   printf( "  AES"    );
+     if         ( sw_has_sha512  )   printf( " SHA512"  );
+     else if    ( sw_has_sha     )   printf( " SHA256"  );
 
      if ( !display_only )
      {
-        printf("\nAlgo features:");
+        printf("\nAlgo features:       ");
         if ( algo_features == EMPTY_SET ) printf( " None" );
         else
         {
@@ -2973,17 +3020,20 @@ static bool cpu_capability( bool display_only )
            else if ( algo_has_avx2   )  printf( " AVX2  " );
            else if ( algo_has_sse42  )  printf( " SSE4.2" );
            else if ( algo_has_sse2   )  printf( " SSE2  " );
+           if      ( algo_has_neon   )  printf( " NEON  " );
            if      ( algo_has_vaes   )  printf( " VAES"   );
            else if ( algo_has_aes    )  printf( "  AES"   );
-           if      ( algo_has_sha    )  printf( " SHA"    );
+           if      ( algo_has_sha512 )  printf( " SHA512" );
+           else if ( algo_has_sha    )  printf( " SHA256" );
         }
      }
      printf("\n");
 
      if ( display_only ) return true;
 
+/*     
      // Check for CPU and build incompatibilities
-     if ( !cpu_has_sse2 )
+     if ( !cpu_has_sse2 && !cpu_has_aarch64 )
      {
         printf( "A CPU with SSE2 is required to use cpuminer-opt\n" );
         return false;
@@ -3008,24 +3058,30 @@ static bool cpu_capability( bool display_only )
         printf( "The SW build requires a CPU with SHA!\n" );
         return false;
      }
+*/
 
      // Determine mining options
-     use_sse2   = cpu_has_sse2   && algo_has_sse2;
+     use_sse2   = cpu_has_sse2   && sw_has_sse2   && algo_has_sse2;
      use_sse42  = cpu_has_sse42  && sw_has_sse42  && algo_has_sse42;
      use_avx    = cpu_has_avx    && sw_has_avx    && algo_has_avx;
-     use_aes    = cpu_has_aes    && sw_has_aes    && algo_has_aes;
      use_avx2   = cpu_has_avx2   && sw_has_avx2   && algo_has_avx2;
      use_avx512 = cpu_has_avx512 && sw_has_avx512 && algo_has_avx512;
-     use_sha    = cpu_has_sha    && sw_has_sha    && algo_has_sha;
+     use_aes    = cpu_has_aes    && sw_has_aes    && algo_has_aes;
      use_vaes   = cpu_has_vaes   && sw_has_vaes   && algo_has_vaes;
+     use_sha    = cpu_has_sha    && sw_has_sha    && algo_has_sha;
+     use_sha512 = cpu_has_sha512 && sw_has_sha512 && algo_has_sha512;
+     use_neon   = sw_has_aarch64 && sw_has_neon   && algo_has_neon;
      use_none = !( use_sse2 || use_sse42 || use_avx || use_aes || use_avx512
-                || use_avx2 || use_sha || use_vaes );
+                || use_avx2 || use_sha || use_vaes || use_sha512 || use_neon );
 
      // Display best options
-     printf( "\nStarting miner with" );
-     if         ( use_none ) printf( " no optimizations" );
+     applog_nl( "Enabled optimizations:" );
+     if         ( use_none   ) printf( " none" );
      else
      {
+//        if ( cpu_has_aarch64 ) printf( " AArch64");
+//        else
+//                               printf( " x86_64" );
         if      ( use_avx512 ) printf( " AVX512" );
         else if ( use_avx2   ) printf( " AVX2"   );
         else if ( use_avx    ) printf( " AVX"    );
@@ -3033,13 +3089,17 @@ static bool cpu_capability( bool display_only )
         else if ( use_sse2   ) printf( " SSE2"   );
         if      ( use_vaes   ) printf( " VAES"   );
         else if ( use_aes    ) printf( " AES"    );
-        if      ( use_sha    ) printf( " SHA"    );
+        if      ( use_sha512 ) printf( " SHA512" );
+        else if ( use_sha    ) printf( " SHA256" );
+        if      ( use_neon   ) printf( " NEON"   );
      }
-     printf( "...\n\n" );
+     printf( "\n" );
 
      return true;
 }
-        
+
+
+
 void show_version_and_exit(void)
 {
         printf("\n built on " __DATE__
@@ -3400,6 +3460,9 @@ void parse_arg(int key, char *arg )
    case 1014:   // hash-meter
       opt_hash_meter = true;
       break;
+   case 1031:   // bell
+      opt_bell = true;
+      break;
    case 1016:			/* --coinbase-addr */
       if ( arg ) coinbase_address = strdup( arg );
 		break;
@@ -3744,6 +3807,9 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+   if ( is_root() )
+      applog( LOG_NOTICE, "Running cpuminer as Superuser is discouraged.");
+   
 #ifndef WIN32
 	if (opt_background)
    {
@@ -3801,6 +3867,9 @@ int main(int argc, char *argv[])
          applog( LOG_INFO, "Found %d CPUs in %d groups",
                            num_cpus, num_cpugroups );
 #endif
+   
+   conditional_state = malloc( opt_n_threads * ((sizeof(bool)) ) );
+   memset( conditional_state, 0, opt_n_threads * ((sizeof(bool)) ) );
    
    const int map_size = opt_n_threads < num_cpus ? num_cpus : opt_n_threads;   
    thread_affinity_map = malloc( map_size * (sizeof (int)) );
@@ -3964,7 +4033,7 @@ int main(int argc, char *argv[])
    applog( LOG_INFO, "%d of %d miner threads started using '%s' algorithm",
                      opt_n_threads, num_cpus, algo_names[opt_algo] );
 
-	/* main loop - simply wait for workio thread to exit */
+      /* main loop - simply wait for workio thread to exit */
 	pthread_join( thr_info[work_thr_id].pth, NULL );
 	applog( LOG_WARNING, "workio thread dead, exiting." );
 	return 0;
